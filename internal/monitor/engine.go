@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -173,9 +174,32 @@ func formatNum(v float64) string {
 		return fmt.Sprintf("%.2fM", v/1_000_000)
 	}
 	if v >= 1_000 {
-		return fmt.Sprintf("%,.2f", math.Round(v*100)/100)
+		return addCommas(fmt.Sprintf("%.2f", math.Round(v*100)/100))
 	}
 	return fmt.Sprintf("%.2f", v)
+}
+
+func addCommas(s string) string {
+	parts := strings.SplitN(s, ".", 2)
+	intPart := parts[0]
+	n := len(intPart)
+	if n <= 3 {
+		if len(parts) == 2 {
+			return intPart + "." + parts[1]
+		}
+		return intPart
+	}
+	var result []byte
+	for i, c := range intPart {
+		if i > 0 && (n-i)%3 == 0 {
+			result = append(result, ',')
+		}
+		result = append(result, byte(c))
+	}
+	if len(parts) == 2 {
+		return string(result) + "." + parts[1]
+	}
+	return string(result)
 }
 
 func stringToUpper(s string) string {
