@@ -30,6 +30,7 @@ func NewAltura() *Altura {
 }
 
 func (a *Altura) Name() string { return "altura" }
+func (a *Altura) URL() string  { return "https://app.altura.trade/stats" }
 
 func (a *Altura) FetchSnapshot() (*monitor.Snapshot, error) {
 	g, err := a.fetchGlobals()
@@ -47,10 +48,12 @@ func (a *Altura) FetchSnapshot() (*monitor.Snapshot, error) {
 	apr := calcAPR(pps)
 
 	return &monitor.Snapshot{
-		Source:    "altura",
-		TVL:      tvl,
-		Price:    price,
-		APR:      apr,
+		Source: "altura",
+		Metrics: map[string]float64{
+			"tvl":   tvl,
+			"price": price,
+			"apr":   apr,
+		},
 		FetchedAt: time.Now(),
 	}, nil
 }
@@ -68,13 +71,13 @@ func (a *Altura) FetchDailyReport() (string, error) {
 
 	now := time.Now().Format("2006-01-02")
 	msg := fmt.Sprintf("📊 ALTURA DAILY REPORT — %s\n\n", now)
-	msg += fmt.Sprintf("TVL: $%s\n", formatNumber(snap.TVL))
-	msg += fmt.Sprintf("AVLT Price: $%.4f\n", snap.Price)
-	msg += fmt.Sprintf("APR: %.2f%%\n", snap.APR)
+	msg += fmt.Sprintf("TVL: $%s\n", formatNumber(snap.TVL()))
+	msg += fmt.Sprintf("AVLT Price: $%.4f\n", snap.Price())
+	msg += fmt.Sprintf("APR: %.2f%%\n", snap.APR())
 
 	if len(dayStats) > 0 {
 		msg += "\nTVL History:\n"
-		currentTVL := snap.TVL
+		currentTVL := snap.TVL()
 		for _, period := range []struct {
 			label string
 			days  int

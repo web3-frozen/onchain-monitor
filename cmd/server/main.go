@@ -55,6 +55,7 @@ func main() {
 	// Monitoring engine
 	engine := monitor.NewEngine(db, logger, bot.SendMessage)
 	engine.Register(sources.NewAltura())
+	engine.Register(sources.NewNeverland())
 
 	// Start background goroutines
 	go bot.Run(ctx)

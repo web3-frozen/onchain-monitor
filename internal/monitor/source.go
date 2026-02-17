@@ -14,13 +14,19 @@ type Source interface {
 
 	// FetchDailyReport generates a daily report string.
 	FetchDailyReport() (string, error)
+
+	// URL returns the link to the source's stats page.
+	URL() string
 }
 
 // Snapshot represents a point-in-time reading from a data source.
 type Snapshot struct {
-	Source    string    `json:"source"`
-	TVL      float64   `json:"tvl"`
-	Price    float64   `json:"price"`
-	APR      float64   `json:"apr"`
-	FetchedAt time.Time `json:"fetched_at"`
+	Source    string             `json:"source"`
+	Metrics  map[string]float64 `json:"metrics"`
+	FetchedAt time.Time         `json:"fetched_at"`
 }
+
+// legacy convenience getters used by existing code
+func (s *Snapshot) TVL() float64   { return s.Metrics["tvl"] }
+func (s *Snapshot) Price() float64 { return s.Metrics["price"] }
+func (s *Snapshot) APR() float64   { return s.Metrics["apr"] }

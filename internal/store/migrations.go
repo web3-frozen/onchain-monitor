@@ -30,10 +30,16 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     UNIQUE(tg_user_id, event_id)
 );
 
--- Seed default events (idempotent)
+-- Rename old event names (idempotent — ignore if old names don't exist)
+UPDATE events SET name = 'altura_drop', description = 'Alert when Altura metrics drop >10% in 1 minute'
+    WHERE name = 'altura_tvl_drop';
+
+-- Seed events (idempotent)
 INSERT INTO events (name, description, category) VALUES
-    ('altura_tvl_drop', 'Alert when Altura TVL drops more than 10% within 1 minute', 'altura'),
-    ('altura_daily_report', 'Daily 8am HKT report with TVL, AVLT price, and APR', 'altura')
+    ('altura_drop', 'Alert when Altura metrics drop >10% in 1 minute', 'altura'),
+    ('altura_daily_report', 'Daily 8am HKT report — Altura TVL, AVLT price, APR', 'altura'),
+    ('neverland_drop', 'Alert when Neverland metrics drop >10% in 1 minute', 'neverland'),
+    ('neverland_daily_report', 'Daily 8am HKT report — Neverland TVL, veDUST, DUST price, fees', 'neverland')
 ON CONFLICT (name) DO NOTHING;
 `
 

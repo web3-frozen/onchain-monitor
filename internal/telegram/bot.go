@@ -30,7 +30,7 @@ func NewBot(token string, s *store.Store, logger *slog.Logger) *Bot {
 		token:  token,
 		store:  s,
 		logger: logger,
-		client: &http.Client{Timeout: 30 * time.Second},
+		client: &http.Client{Timeout: 45 * time.Second},
 	}
 }
 

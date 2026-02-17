@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	pollInterval    = 1 * time.Minute
-	tvlDropThreshold = 0.10 // 10%
+	pollInterval   = 1 * time.Minute
+	dropThreshold  = 0.10 // 10%
 )
 
 // AlertFunc sends a message to a Telegram chat.
@@ -45,6 +45,15 @@ func NewEngine(s *store.Store, logger *slog.Logger, alertFn AlertFunc) *Engine {
 func (e *Engine) Register(src Source) {
 	e.sources[src.Name()] = src
 	e.logger.Info("registered source", "source", src.Name())
+}
+
+// SourceNames returns names of all registered sources.
+func (e *Engine) SourceNames() []string {
+	names := make([]string, 0, len(e.sources))
+	for n := range e.sources {
+		names = append(names, n)
+	}
+	return names
 }
 
 // GetSnapshot returns the latest cached snapshot for a source.
@@ -91,38 +100,47 @@ func (e *Engine) pollAll(ctx context.Context) {
 		e.lastSnap[name] = snap
 		e.mu.Unlock()
 
-		e.logger.Info("snapshot", "source", name, "tvl", snap.TVL, "price", snap.Price, "apr", snap.APR)
+		e.logger.Info("snapshot", "source", name, "metrics", snap.Metrics)
 
-		// Check TVL drop rule
-		if prev != nil && prev.TVL > 0 {
-			drop := (prev.TVL - snap.TVL) / prev.TVL
-			if drop >= tvlDropThreshold {
-				e.triggerTVLDropAlert(ctx, name, prev, snap, drop)
+		// Check all metrics for drops ≥ threshold
+		if prev != nil {
+			for metric, currVal := range snap.Metrics {
+				prevVal, ok := prev.Metrics[metric]
+				if !ok || prevVal <= 0 {
+					continue
+				}
+				drop := (prevVal - currVal) / prevVal
+				if drop >= dropThreshold {
+					e.triggerDropAlert(ctx, src, metric, prevVal, currVal, drop)
+				}
 			}
 		}
 	}
 }
 
-func (e *Engine) triggerTVLDropAlert(ctx context.Context, source string, prev, curr *Snapshot, dropPct float64) {
-	eventName := source + "_tvl_drop"
+func (e *Engine) triggerDropAlert(ctx context.Context, src Source, metric string, prevVal, currVal, dropPct float64) {
+	eventName := src.Name() + "_drop"
 	chatIDs, err := e.store.GetSubscriberChatIDs(ctx, eventName)
 	if err != nil {
 		e.logger.Error("get subscribers failed", "event", eventName, "error", err)
 		return
 	}
 
-	dropAmt := prev.TVL - curr.TVL
-	msg := fmt.Sprintf("🚨 %s TVL DROP ALERT\n\n"+
-		"TVL dropped by %.1f%% in the last minute!\n"+
+	dropAmt := prevVal - currVal
+	msg := fmt.Sprintf("🚨 %s %s DROP ALERT\n\n"+
+		"%s dropped by %.1f%% in the last minute!\n"+
 		"Previous: $%s\n"+
 		"Current:  $%s\n"+
 		"Drop:     -$%s\n\n"+
-		"🔗 https://app.altura.trade/stats",
-		stringToUpper(source),
+		"🔗 %s",
+		stringToUpper(src.Name()),
+		stringToUpper(metric),
+		stringToUpper(metric),
 		dropPct*100,
-		formatNum(prev.TVL),
-		formatNum(curr.TVL),
-		formatNum(dropAmt))
+		formatNum(prevVal),
+		formatNum(currVal),
+		formatNum(dropAmt),
+		src.URL())
 
 	e.broadcast(chatIDs, msg)
 }
@@ -176,7 +194,7 @@ func formatNum(v float64) string {
 	if v >= 1_000 {
 		return addCommas(fmt.Sprintf("%.2f", math.Round(v*100)/100))
 	}
-	return fmt.Sprintf("%.2f", v)
+	return fmt.Sprintf("%.4f", v)
 }
 
 func addCommas(s string) string {
