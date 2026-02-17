@@ -27,8 +27,9 @@ func NewNeverland() *Neverland {
 	}
 }
 
-func (n *Neverland) Name() string { return "neverland" }
-func (n *Neverland) URL() string  { return "https://app.neverland.money" }
+func (n *Neverland) Name() string  { return "neverland" }
+func (n *Neverland) Chain() string { return "Monad" }
+func (n *Neverland) URL() string   { return "https://app.neverland.money" }
 
 func (n *Neverland) FetchSnapshot() (*monitor.Snapshot, error) {
 	metrics := make(map[string]float64)
@@ -58,7 +59,8 @@ func (n *Neverland) FetchSnapshot() (*monitor.Snapshot, error) {
 
 	return &monitor.Snapshot{
 		Source:    "neverland",
-		Metrics:  metrics,
+		Chain:     "Monad",
+		Metrics:   metrics,
 		FetchedAt: time.Now(),
 	}, nil
 }

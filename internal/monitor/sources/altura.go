@@ -29,8 +29,9 @@ func NewAltura() *Altura {
 	}
 }
 
-func (a *Altura) Name() string { return "altura" }
-func (a *Altura) URL() string  { return "https://app.altura.trade/stats" }
+func (a *Altura) Name() string  { return "altura" }
+func (a *Altura) Chain() string { return "Hyperliquid" }
+func (a *Altura) URL() string   { return "https://app.altura.trade/stats" }
 
 func (a *Altura) FetchSnapshot() (*monitor.Snapshot, error) {
 	g, err := a.fetchGlobals()
@@ -49,6 +50,7 @@ func (a *Altura) FetchSnapshot() (*monitor.Snapshot, error) {
 
 	return &monitor.Snapshot{
 		Source: "altura",
+		Chain:  "Hyperliquid",
 		Metrics: map[string]float64{
 			"tvl":   tvl,
 			"price": price,

@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/web3-frozen/onchain-monitor/internal/monitor"
 )
@@ -10,6 +11,7 @@ import (
 func Stats(engine *monitor.Engine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		source := r.URL.Query().Get("source")
+		chain := r.URL.Query().Get("chain")
 		w.Header().Set("Content-Type", "application/json")
 
 		if source != "" {
@@ -22,13 +24,31 @@ func Stats(engine *monitor.Engine) http.HandlerFunc {
 			return
 		}
 
-		// Return all sources
+		// Return all sources, optionally filtered by chain
 		all := make([]*monitor.Snapshot, 0)
 		for _, name := range engine.SourceNames() {
 			if snap := engine.GetSnapshot(name); snap != nil {
+				if chain != "" && !strings.EqualFold(snap.Chain, chain) {
+					continue
+				}
 				all = append(all, snap)
 			}
 		}
 		_ = json.NewEncoder(w).Encode(all)
+	}
+}
+
+// StatsMetadata returns available chains for filtering.
+func StatsMetadata(engine *monitor.Engine) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		meta := struct {
+			Chains       []string `json:"chains"`
+			PollInterval string   `json:"poll_interval"`
+		}{
+			Chains:       engine.Chains(),
+			PollInterval: "60s",
+		}
+		_ = json.NewEncoder(w).Encode(meta)
 	}
 }

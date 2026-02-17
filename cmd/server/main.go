@@ -77,6 +77,7 @@ func main() {
 		r.Post("/subscriptions", handler.Subscribe(db))
 		r.Delete("/subscriptions/{id}", handler.Unsubscribe(db))
 		r.Get("/stats", handler.Stats(engine))
+		r.Get("/stats/meta", handler.StatsMetadata(engine))
 	})
 
 	srv := &http.Server{

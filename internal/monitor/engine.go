@@ -56,6 +56,20 @@ func (e *Engine) SourceNames() []string {
 	return names
 }
 
+// Chains returns a deduplicated list of chains from registered sources.
+func (e *Engine) Chains() []string {
+	seen := make(map[string]bool)
+	chains := make([]string, 0)
+	for _, src := range e.sources {
+		c := src.Chain()
+		if !seen[c] {
+			seen[c] = true
+			chains = append(chains, c)
+		}
+	}
+	return chains
+}
+
 // GetSnapshot returns the latest cached snapshot for a source.
 func (e *Engine) GetSnapshot(source string) *Snapshot {
 	e.mu.RLock()

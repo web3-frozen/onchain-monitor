@@ -9,6 +9,9 @@ type Source interface {
 	// Name returns a unique identifier for this source (e.g., "altura").
 	Name() string
 
+	// Chain returns the blockchain this source operates on (e.g., "Hyperliquid").
+	Chain() string
+
 	// FetchSnapshot fetches the current state from the data source.
 	FetchSnapshot() (*Snapshot, error)
 
@@ -22,6 +25,7 @@ type Source interface {
 // Snapshot represents a point-in-time reading from a data source.
 type Snapshot struct {
 	Source    string             `json:"source"`
+	Chain    string             `json:"chain"`
 	Metrics  map[string]float64 `json:"metrics"`
 	FetchedAt time.Time         `json:"fetched_at"`
 }
