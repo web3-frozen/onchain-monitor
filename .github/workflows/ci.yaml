@@ -1,0 +1,23 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+  id-token: write
+
+jobs:
+  ci:
+    uses: web3-frozen/homelab-apps/.github/workflows/ci-container.yaml@main
+    with:
+      app-name: onchain-monitor
+      image-name: onchain-monitor
+      workload-dir: workloads/onchain-monitor
+      go-version: "1.23"
+    secrets: inherit

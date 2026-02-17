@@ -1,0 +1,106 @@
+package main
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/web3-frozen/onchain-monitor/internal/config"
+	"github.com/web3-frozen/onchain-monitor/internal/handler"
+	"github.com/web3-frozen/onchain-monitor/internal/middleware"
+	"github.com/web3-frozen/onchain-monitor/internal/monitor"
+	"github.com/web3-frozen/onchain-monitor/internal/monitor/sources"
+	"github.com/web3-frozen/onchain-monitor/internal/store"
+	"github.com/web3-frozen/onchain-monitor/internal/telegram"
+)
+
+func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	cfg := config.Load()
+
+	if cfg.DatabaseURL == "" {
+		logger.Error("DATABASE_URL is required")
+		os.Exit(1)
+	}
+	if cfg.TelegramToken == "" {
+		logger.Error("TELEGRAM_BOT_TOKEN is required")
+		os.Exit(1)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Database
+	db, err := store.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		logger.Error("failed to connect to database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	if err := db.Migrate(ctx); err != nil {
+		logger.Error("failed to run migrations", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("database connected and migrated")
+
+	// Telegram bot
+	bot := telegram.NewBot(cfg.TelegramToken, db, logger)
+
+	// Monitoring engine
+	engine := monitor.NewEngine(db, logger, bot.SendMessage)
+	engine.Register(sources.NewAltura())
+
+	// Start background goroutines
+	go bot.Run(ctx)
+	go engine.Run(ctx)
+
+	// HTTP routes
+	r := chi.NewRouter()
+	r.Use(middleware.Recover(logger))
+	r.Use(middleware.Logger(logger))
+	r.Use(middleware.CORS(cfg.FrontendOrigin))
+
+	r.Get("/healthz", handler.Health())
+	r.Get("/readyz", handler.Ready(db))
+
+	r.Route("/api", func(r chi.Router) {
+		r.Get("/events", handler.ListEvents(db))
+		r.Post("/link", handler.LinkTelegram(db))
+		r.Get("/subscriptions", handler.ListSubscriptions(db))
+		r.Post("/subscriptions", handler.Subscribe(db))
+		r.Delete("/subscriptions/{id}", handler.Unsubscribe(db))
+		r.Get("/stats", handler.Stats(engine))
+	})
+
+	srv := &http.Server{
+		Addr:         ":" + cfg.Port,
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	go func() {
+		logger.Info("server starting", "port", cfg.Port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("server failed", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	logger.Info("shutting down gracefully")
+	cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+	_ = srv.Shutdown(shutdownCtx)
+}
