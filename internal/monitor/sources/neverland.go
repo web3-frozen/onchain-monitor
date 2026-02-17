@@ -186,7 +186,9 @@ func (n *Neverland) fetchDustPrice() (float64, error) {
 	for _, p := range result.Pairs {
 		if p.ChainID == "monad" && p.BaseToken.Symbol == "DUST" {
 			var price float64
-			fmt.Sscanf(p.PriceUsd, "%f", &price)
+			if _, err := fmt.Sscanf(p.PriceUsd, "%f", &price); err != nil {
+				continue
+			}
 			if price > 0 {
 				return price, nil
 			}
