@@ -351,13 +351,6 @@ func (e *Engine) sendDueReports(ctx context.Context, hour int) {
 	}
 }
 
-func (e *Engine) broadcast(chatIDs []int64, msg string) {
-	for _, chatID := range chatIDs {
-		if err := e.alertFn(chatID, msg); err != nil {
-			e.logger.Error("send alert failed", "chat_id", chatID, "error", err)
-		}
-	}
-}
 
 func formatNum(v float64) string {
 	if v >= 1_000_000 {
