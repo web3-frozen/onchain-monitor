@@ -43,6 +43,7 @@ func Subscribe(s *store.Store) http.HandlerFunc {
 		EventID       int     `json:"event_id"`
 		ThresholdPct  float64 `json:"threshold_pct"`
 		WindowMinutes int     `json:"window_minutes"`
+		Direction     string  `json:"direction"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -57,15 +58,17 @@ func Subscribe(s *store.Store) http.HandlerFunc {
 			return
 		}
 
-		// Defaults for non-drop events
 		if req.ThresholdPct <= 0 {
 			req.ThresholdPct = 10
 		}
 		if req.WindowMinutes <= 0 {
 			req.WindowMinutes = 1
 		}
+		if req.Direction != "drop" && req.Direction != "increase" {
+			req.Direction = "drop"
+		}
 
-		sub, err := s.Subscribe(r.Context(), req.TgChatID, req.EventID, req.ThresholdPct, req.WindowMinutes)
+		sub, err := s.Subscribe(r.Context(), req.TgChatID, req.EventID, req.ThresholdPct, req.WindowMinutes, req.Direction)
 		if err != nil {
 			http.Error(w, `{"error":"failed to subscribe"}`, http.StatusInternalServerError)
 			return
@@ -73,6 +76,48 @@ func Subscribe(s *store.Store) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(sub)
+	}
+}
+
+func UpdateSubscription(s *store.Store) http.HandlerFunc {
+	type request struct {
+		ThresholdPct  float64 `json:"threshold_pct"`
+		WindowMinutes int     `json:"window_minutes"`
+		Direction     string  `json:"direction"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		idStr := chi.URLParam(r, "id")
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			http.Error(w, `{"error":"invalid subscription id"}`, http.StatusBadRequest)
+			return
+		}
+
+		var req request
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+			return
+		}
+
+		if req.ThresholdPct <= 0 {
+			req.ThresholdPct = 10
+		}
+		if req.WindowMinutes <= 0 {
+			req.WindowMinutes = 1
+		}
+		if req.Direction != "drop" && req.Direction != "increase" {
+			req.Direction = "drop"
+		}
+
+		sub, err := s.UpdateSubscription(r.Context(), id, req.ThresholdPct, req.WindowMinutes, req.Direction)
+		if err != nil {
+			http.Error(w, `{"error":"failed to update subscription"}`, http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(sub)
 	}
 }

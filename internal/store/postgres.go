@@ -122,12 +122,13 @@ type Subscription struct {
 	EventID       int       `json:"event_id"`
 	ThresholdPct  float64   `json:"threshold_pct"`
 	WindowMinutes int       `json:"window_minutes"`
+	Direction     string    `json:"direction"`
 	CreatedAt     time.Time `json:"created_at"`
 }
 
 func (s *Store) ListSubscriptions(ctx context.Context, tgChatID int64) ([]Subscription, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT s.id, s.tg_user_id, s.event_id, s.threshold_pct, s.window_minutes, s.created_at
+		SELECT s.id, s.tg_user_id, s.event_id, s.threshold_pct, s.window_minutes, s.direction, s.created_at
 		FROM subscriptions s
 		JOIN telegram_users u ON u.id = s.tg_user_id
 		WHERE u.tg_chat_id = $1
@@ -140,7 +141,7 @@ func (s *Store) ListSubscriptions(ctx context.Context, tgChatID int64) ([]Subscr
 	var subs []Subscription
 	for rows.Next() {
 		var sub Subscription
-		if err := rows.Scan(&sub.ID, &sub.TgUserID, &sub.EventID, &sub.ThresholdPct, &sub.WindowMinutes, &sub.CreatedAt); err != nil {
+		if err := rows.Scan(&sub.ID, &sub.TgUserID, &sub.EventID, &sub.ThresholdPct, &sub.WindowMinutes, &sub.Direction, &sub.CreatedAt); err != nil {
 			return nil, err
 		}
 		subs = append(subs, sub)
@@ -148,14 +149,28 @@ func (s *Store) ListSubscriptions(ctx context.Context, tgChatID int64) ([]Subscr
 	return subs, rows.Err()
 }
 
-func (s *Store) Subscribe(ctx context.Context, tgChatID int64, eventID int, thresholdPct float64, windowMinutes int) (*Subscription, error) {
+func (s *Store) Subscribe(ctx context.Context, tgChatID int64, eventID int, thresholdPct float64, windowMinutes int, direction string) (*Subscription, error) {
 	var sub Subscription
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO subscriptions (tg_user_id, event_id, threshold_pct, window_minutes)
-		SELECT u.id, $2, $3, $4 FROM telegram_users u WHERE u.tg_chat_id = $1
-		ON CONFLICT (tg_user_id, event_id) DO UPDATE SET threshold_pct = $3, window_minutes = $4
-		RETURNING id, tg_user_id, event_id, threshold_pct, window_minutes, created_at`, tgChatID, eventID, thresholdPct, windowMinutes).
-		Scan(&sub.ID, &sub.TgUserID, &sub.EventID, &sub.ThresholdPct, &sub.WindowMinutes, &sub.CreatedAt)
+		INSERT INTO subscriptions (tg_user_id, event_id, threshold_pct, window_minutes, direction)
+		SELECT u.id, $2, $3, $4, $5 FROM telegram_users u WHERE u.tg_chat_id = $1
+		RETURNING id, tg_user_id, event_id, threshold_pct, window_minutes, direction, created_at`,
+		tgChatID, eventID, thresholdPct, windowMinutes, direction).
+		Scan(&sub.ID, &sub.TgUserID, &sub.EventID, &sub.ThresholdPct, &sub.WindowMinutes, &sub.Direction, &sub.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &sub, nil
+}
+
+func (s *Store) UpdateSubscription(ctx context.Context, id int64, thresholdPct float64, windowMinutes int, direction string) (*Subscription, error) {
+	var sub Subscription
+	err := s.pool.QueryRow(ctx, `
+		UPDATE subscriptions SET threshold_pct = $2, window_minutes = $3, direction = $4
+		WHERE id = $1
+		RETURNING id, tg_user_id, event_id, threshold_pct, window_minutes, direction, created_at`,
+		id, thresholdPct, windowMinutes, direction).
+		Scan(&sub.ID, &sub.TgUserID, &sub.EventID, &sub.ThresholdPct, &sub.WindowMinutes, &sub.Direction, &sub.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -195,11 +210,12 @@ type SubscriberConfig struct {
 	ChatID        int64
 	ThresholdPct  float64
 	WindowMinutes int
+	Direction     string
 }
 
 func (s *Store) GetSubscribersWithThresholds(ctx context.Context, eventName string) ([]SubscriberConfig, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT u.tg_chat_id, s.threshold_pct, s.window_minutes
+		SELECT u.tg_chat_id, s.threshold_pct, s.window_minutes, s.direction
 		FROM subscriptions s
 		JOIN telegram_users u ON u.id = s.tg_user_id
 		JOIN events e ON e.id = s.event_id
@@ -212,7 +228,7 @@ func (s *Store) GetSubscribersWithThresholds(ctx context.Context, eventName stri
 	var configs []SubscriberConfig
 	for rows.Next() {
 		var c SubscriberConfig
-		if err := rows.Scan(&c.ChatID, &c.ThresholdPct, &c.WindowMinutes); err != nil {
+		if err := rows.Scan(&c.ChatID, &c.ThresholdPct, &c.WindowMinutes, &c.Direction); err != nil {
 			return nil, err
 		}
 		configs = append(configs, c)

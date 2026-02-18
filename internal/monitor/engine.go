@@ -127,7 +127,7 @@ func (e *Engine) pollAll(ctx context.Context) {
 		e.logger.Info("snapshot", "source", name, "metrics", snap.Metrics)
 
 		// Per-subscriber threshold checking
-		eventName := name + "_drop"
+		eventName := name + "_metric_alert"
 		subscribers, err := e.store.GetSubscribersWithThresholds(ctx, eventName)
 		if err != nil {
 			e.logger.Error("get subscribers with thresholds failed", "event", eventName, "error", err)
@@ -150,15 +150,22 @@ func (e *Engine) pollAll(ctx context.Context) {
 				if !ok || prevVal <= 0 {
 					continue
 				}
-				drop := (prevVal - currVal) / prevVal
-				if drop >= threshold {
-					alertKey := fmt.Sprintf("%d:%s:%s", sub.ChatID, name, metric)
+
+				var change float64
+				if sub.Direction == "increase" {
+					change = (currVal - prevVal) / prevVal
+				} else {
+					change = (prevVal - currVal) / prevVal
+				}
+
+				if change >= threshold {
+					alertKey := fmt.Sprintf("%d:%s:%s:%s", sub.ChatID, name, metric, sub.Direction)
 					if lastTime, ok := e.lastAlerted[alertKey]; ok {
 						if time.Since(lastTime) < time.Duration(sub.WindowMinutes)*time.Minute {
 							continue
 						}
 					}
-					e.sendDropAlertToUser(sub.ChatID, src, metric, prevVal, currVal, drop, sub.WindowMinutes)
+					e.sendMetricAlertToUser(sub.ChatID, src, metric, prevVal, currVal, change, sub.WindowMinutes, sub.Direction)
 					e.lastAlerted[alertKey] = time.Now()
 				}
 			}
@@ -166,22 +173,36 @@ func (e *Engine) pollAll(ctx context.Context) {
 	}
 }
 
-func (e *Engine) sendDropAlertToUser(chatID int64, src Source, metric string, prevVal, currVal, dropPct float64, windowMin int) {
-	dropAmt := prevVal - currVal
-	msg := fmt.Sprintf("🚨 %s %s DROP ALERT\n\n"+
-		"%s dropped by %.1f%% in the last %d minute(s)!\n"+
+func (e *Engine) sendMetricAlertToUser(chatID int64, src Source, metric string, prevVal, currVal, changePct float64, windowMin int, direction string) {
+	dirLabel := "DROP"
+	verb := "dropped"
+	diffSign := "-"
+	if direction == "increase" {
+		dirLabel = "INCREASE"
+		verb = "increased"
+		diffSign = "+"
+	}
+	diff := prevVal - currVal
+	if diff < 0 {
+		diff = -diff
+	}
+	msg := fmt.Sprintf("🚨 %s %s %s ALERT\n\n"+
+		"%s %s by %.1f%% in the last %d minute(s)!\n"+
 		"Previous: $%s\n"+
 		"Current:  $%s\n"+
-		"Drop:     -$%s\n\n"+
+		"Change:   %s$%s\n\n"+
 		"🔗 %s",
 		stringToUpper(src.Name()),
 		stringToUpper(metric),
+		dirLabel,
 		stringToUpper(metric),
-		dropPct*100,
+		verb,
+		changePct*100,
 		windowMin,
 		formatNum(prevVal),
 		formatNum(currVal),
-		formatNum(dropAmt),
+		diffSign,
+		formatNum(diff),
 		src.URL())
 
 	if err := e.alertFn(chatID, msg); err != nil {

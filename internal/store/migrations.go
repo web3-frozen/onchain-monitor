@@ -28,30 +28,36 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     event_id INT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     threshold_pct DOUBLE PRECISION NOT NULL DEFAULT 10,
     window_minutes INT NOT NULL DEFAULT 1,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(tg_user_id, event_id)
+    direction TEXT NOT NULL DEFAULT 'drop',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Add columns if upgrading from older schema
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS threshold_pct DOUBLE PRECISION NOT NULL DEFAULT 10;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS window_minutes INT NOT NULL DEFAULT 1;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS direction TEXT NOT NULL DEFAULT 'drop';
 
--- Rename old event names (idempotent — ignore if old names don't exist)
-UPDATE events SET name = 'altura_drop', description = 'Alert when Altura metrics drop'
-    WHERE name = 'altura_tvl_drop';
+-- Drop unique constraint to allow multiple subscriptions per event with different configs
+ALTER TABLE subscriptions DROP CONSTRAINT IF EXISTS subscriptions_tg_user_id_event_id_key;
+
+-- Rename old event names (idempotent)
+UPDATE events SET name = 'altura_metric_alert', description = 'Alert when Altura metrics'
+    WHERE name IN ('altura_tvl_drop', 'altura_drop');
+UPDATE events SET name = 'neverland_metric_alert', description = 'Alert when Neverland metrics'
+    WHERE name IN ('neverland_drop');
 
 -- Seed events (idempotent)
 INSERT INTO events (name, description, category) VALUES
-    ('altura_drop', 'Alert when Altura metrics drop', 'altura'),
+    ('altura_metric_alert', 'Alert when Altura metrics', 'altura'),
     ('altura_daily_report', 'Daily 8am UTC+8 report — Altura TVL, AVLT price, APR', 'altura'),
-    ('neverland_drop', 'Alert when Neverland metrics drop', 'neverland'),
+    ('neverland_metric_alert', 'Alert when Neverland metrics', 'neverland'),
     ('neverland_daily_report', 'Daily 8am UTC+8 report — Neverland TVL, veDUST, DUST price, fees', 'neverland')
 ON CONFLICT (name) DO NOTHING;
 
--- Update existing descriptions for HKT -> UTC+8 and configurable thresholds
-UPDATE events SET description = 'Alert when Altura metrics drop' WHERE name = 'altura_drop';
+-- Update existing descriptions
+UPDATE events SET description = 'Alert when Altura metrics' WHERE name = 'altura_metric_alert';
 UPDATE events SET description = 'Daily 8am UTC+8 report — Altura TVL, AVLT price, APR' WHERE name = 'altura_daily_report';
-UPDATE events SET description = 'Alert when Neverland metrics drop' WHERE name = 'neverland_drop';
+UPDATE events SET description = 'Alert when Neverland metrics' WHERE name = 'neverland_metric_alert';
 UPDATE events SET description = 'Daily 8am UTC+8 report — Neverland TVL, veDUST, DUST price, fees' WHERE name = 'neverland_daily_report';
 `
 
