@@ -56,6 +56,7 @@ func main() {
 	engine := monitor.NewEngine(db, logger, bot.SendMessage)
 	engine.Register(sources.NewAltura())
 	engine.Register(sources.NewNeverland())
+	engine.Register(sources.NewFearGreed())
 
 	// Start background goroutines
 	go bot.Run(ctx)
@@ -73,6 +74,7 @@ func main() {
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/events", handler.ListEvents(db))
 		r.Post("/link", handler.LinkTelegram(db))
+		r.Post("/unlink", handler.UnlinkTelegram(db))
 		r.Get("/subscriptions", handler.ListSubscriptions(db))
 		r.Post("/subscriptions", handler.Subscribe(db))
 		r.Put("/subscriptions/{id}", handler.UpdateSubscription(db))

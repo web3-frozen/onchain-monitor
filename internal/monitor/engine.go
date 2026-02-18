@@ -145,6 +145,30 @@ func (e *Engine) pollAll(ctx context.Context) {
 		e.mu.RUnlock()
 
 		for _, sub := range subscribers {
+			// Value-based alerts (higher/lower than threshold_value)
+			if sub.ThresholdValue > 0 && (sub.Direction == "higher" || sub.Direction == "lower") {
+				for metric, currVal := range snap.Metrics {
+					var triggered bool
+					if sub.Direction == "higher" && currVal > sub.ThresholdValue {
+						triggered = true
+					} else if sub.Direction == "lower" && currVal < sub.ThresholdValue {
+						triggered = true
+					}
+					if triggered {
+						alertKey := fmt.Sprintf("%d:%s:%s:%s:%.0f", sub.ChatID, name, metric, sub.Direction, sub.ThresholdValue)
+						if lastTime, ok := e.lastAlerted[alertKey]; ok {
+							if time.Since(lastTime) < 60*time.Minute {
+								continue
+							}
+						}
+						e.sendValueAlert(sub.ChatID, src, metric, currVal, sub.ThresholdValue, sub.Direction)
+						e.lastAlerted[alertKey] = time.Now()
+					}
+				}
+				continue
+			}
+
+			// Percentage-based alerts (drop/increase)
 			if sub.WindowMinutes < 1 || sub.WindowMinutes >= len(hist) {
 				continue
 			}
@@ -209,6 +233,34 @@ func (e *Engine) sendMetricAlertToUser(chatID int64, src Source, metric string, 
 		formatNum(currVal),
 		diffSign,
 		formatNum(diff),
+		src.URL())
+
+	if err := e.alertFn(chatID, msg); err != nil {
+		e.logger.Error("send alert failed", "chat_id", chatID, "error", err)
+	}
+}
+
+func (e *Engine) sendValueAlert(chatID int64, src Source, metric string, currVal, thresholdVal float64, direction string) {
+	dirLabel := "ABOVE"
+	cmp := ">"
+	if direction == "lower" {
+		dirLabel = "BELOW"
+		cmp = "<"
+	}
+	msg := fmt.Sprintf("🚨 %s %s %s THRESHOLD\n\n"+
+		"%s is now %s %s %.0f!\n"+
+		"Current: %.0f\n"+
+		"Threshold: %.0f\n\n"+
+		"🔗 %s",
+		stringToUpper(src.Name()),
+		stringToUpper(metric),
+		dirLabel,
+		stringToUpper(metric),
+		cmp,
+		dirLabel,
+		thresholdVal,
+		currVal,
+		thresholdVal,
 		src.URL())
 
 	if err := e.alertFn(chatID, msg); err != nil {

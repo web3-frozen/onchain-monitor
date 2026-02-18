@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     window_minutes INT NOT NULL DEFAULT 1,
     direction TEXT NOT NULL DEFAULT 'drop',
     report_hour INT NOT NULL DEFAULT 8,
+    threshold_value DOUBLE PRECISION NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -38,6 +39,7 @@ ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS threshold_pct DOUBLE PRECISIO
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS window_minutes INT NOT NULL DEFAULT 1;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS direction TEXT NOT NULL DEFAULT 'drop';
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS report_hour INT NOT NULL DEFAULT 8;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS threshold_value DOUBLE PRECISION NOT NULL DEFAULT 0;
 
 -- Drop unique constraint to allow multiple subscriptions per event with different configs
 ALTER TABLE subscriptions DROP CONSTRAINT IF EXISTS subscriptions_tg_user_id_event_id_key;
@@ -53,7 +55,9 @@ INSERT INTO events (name, description, category) VALUES
     ('altura_metric_alert', 'Alert when Altura metrics', 'altura'),
     ('altura_daily_report', 'Daily UTC+8 report — Altura TVL, AVLT price, APR', 'altura'),
     ('neverland_metric_alert', 'Alert when Neverland metrics', 'neverland'),
-    ('neverland_daily_report', 'Daily UTC+8 report — Neverland TVL, veDUST, DUST price, fees', 'neverland')
+    ('neverland_daily_report', 'Daily UTC+8 report — Neverland TVL, veDUST, DUST price, fees', 'neverland'),
+    ('general_metric_alert', 'Alert when Fear & Greed Index', 'general'),
+    ('general_daily_report', 'Daily UTC+8 report — Crypto Fear & Greed Index', 'general')
 ON CONFLICT (name) DO NOTHING;
 
 -- Update existing descriptions
@@ -61,6 +65,8 @@ UPDATE events SET description = 'Alert when Altura metrics' WHERE name = 'altura
 UPDATE events SET description = 'Daily UTC+8 report — Altura TVL, AVLT price, APR' WHERE name = 'altura_daily_report';
 UPDATE events SET description = 'Alert when Neverland metrics' WHERE name = 'neverland_metric_alert';
 UPDATE events SET description = 'Daily UTC+8 report — Neverland TVL, veDUST, DUST price, fees' WHERE name = 'neverland_daily_report';
+UPDATE events SET description = 'Alert when Fear & Greed Index' WHERE name = 'general_metric_alert';
+UPDATE events SET description = 'Daily UTC+8 report — Crypto Fear & Greed Index' WHERE name = 'general_daily_report';
 `
 
 func (s *Store) Migrate(ctx context.Context) error {

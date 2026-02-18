@@ -39,12 +39,13 @@ func ListSubscriptions(s *store.Store) http.HandlerFunc {
 
 func Subscribe(s *store.Store) http.HandlerFunc {
 	type request struct {
-		TgChatID      int64   `json:"tg_chat_id"`
-		EventID       int     `json:"event_id"`
-		ThresholdPct  float64 `json:"threshold_pct"`
-		WindowMinutes int     `json:"window_minutes"`
-		Direction     string  `json:"direction"`
-		ReportHour    *int    `json:"report_hour"`
+		TgChatID       int64   `json:"tg_chat_id"`
+		EventID        int     `json:"event_id"`
+		ThresholdPct   float64 `json:"threshold_pct"`
+		WindowMinutes  int     `json:"window_minutes"`
+		Direction      string  `json:"direction"`
+		ReportHour     *int    `json:"report_hour"`
+		ThresholdValue float64 `json:"threshold_value"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -65,15 +66,19 @@ func Subscribe(s *store.Store) http.HandlerFunc {
 		if req.WindowMinutes <= 0 {
 			req.WindowMinutes = 1
 		}
-		if req.Direction != "drop" && req.Direction != "increase" {
+		validDirs := map[string]bool{"drop": true, "increase": true, "higher": true, "lower": true}
+		if !validDirs[req.Direction] {
 			req.Direction = "drop"
 		}
 		reportHour := 8
 		if req.ReportHour != nil && *req.ReportHour >= 0 && *req.ReportHour <= 23 {
 			reportHour = *req.ReportHour
 		}
+		if req.ThresholdValue < 0 {
+			req.ThresholdValue = 0
+		}
 
-		sub, err := s.Subscribe(r.Context(), req.TgChatID, req.EventID, req.ThresholdPct, req.WindowMinutes, req.Direction, reportHour)
+		sub, err := s.Subscribe(r.Context(), req.TgChatID, req.EventID, req.ThresholdPct, req.WindowMinutes, req.Direction, reportHour, req.ThresholdValue)
 		if err != nil {
 			http.Error(w, `{"error":"failed to subscribe"}`, http.StatusInternalServerError)
 			return
@@ -87,10 +92,11 @@ func Subscribe(s *store.Store) http.HandlerFunc {
 
 func UpdateSubscription(s *store.Store) http.HandlerFunc {
 	type request struct {
-		ThresholdPct  float64 `json:"threshold_pct"`
-		WindowMinutes int     `json:"window_minutes"`
-		Direction     string  `json:"direction"`
-		ReportHour    *int    `json:"report_hour"`
+		ThresholdPct   float64 `json:"threshold_pct"`
+		WindowMinutes  int     `json:"window_minutes"`
+		Direction      string  `json:"direction"`
+		ReportHour     *int    `json:"report_hour"`
+		ThresholdValue float64 `json:"threshold_value"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -113,15 +119,19 @@ func UpdateSubscription(s *store.Store) http.HandlerFunc {
 		if req.WindowMinutes <= 0 {
 			req.WindowMinutes = 1
 		}
-		if req.Direction != "drop" && req.Direction != "increase" {
+		validDirs := map[string]bool{"drop": true, "increase": true, "higher": true, "lower": true}
+		if !validDirs[req.Direction] {
 			req.Direction = "drop"
 		}
 		reportHour := 8
 		if req.ReportHour != nil && *req.ReportHour >= 0 && *req.ReportHour <= 23 {
 			reportHour = *req.ReportHour
 		}
+		if req.ThresholdValue < 0 {
+			req.ThresholdValue = 0
+		}
 
-		sub, err := s.UpdateSubscription(r.Context(), id, req.ThresholdPct, req.WindowMinutes, req.Direction, reportHour)
+		sub, err := s.UpdateSubscription(r.Context(), id, req.ThresholdPct, req.WindowMinutes, req.Direction, reportHour, req.ThresholdValue)
 		if err != nil {
 			http.Error(w, `{"error":"failed to update subscription"}`, http.StatusInternalServerError)
 			return

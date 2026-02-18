@@ -34,3 +34,29 @@ func LinkTelegram(s *store.Store) http.HandlerFunc {
 		_ = json.NewEncoder(w).Encode(user)
 	}
 }
+
+func UnlinkTelegram(s *store.Store) http.HandlerFunc {
+	type request struct {
+		TgChatID int64 `json:"tg_chat_id"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req request
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+			return
+		}
+
+		if req.TgChatID == 0 {
+			http.Error(w, `{"error":"tg_chat_id required"}`, http.StatusBadRequest)
+			return
+		}
+
+		if err := s.UnlinkTelegram(r.Context(), req.TgChatID); err != nil {
+			http.Error(w, `{"error":"failed to unlink"}`, http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
