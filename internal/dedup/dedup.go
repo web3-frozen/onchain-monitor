@@ -13,10 +13,13 @@ type Deduplicator struct {
 }
 
 // New creates a Deduplicator backed by Redis.
-func New(redisURL string) (*Deduplicator, error) {
+func New(redisURL, password string) (*Deduplicator, error) {
 	opts, err := redis.ParseURL(redisURL)
 	if err != nil {
 		return nil, err
+	}
+	if password != "" {
+		opts.Password = password
 	}
 	rdb := redis.NewClient(opts)
 

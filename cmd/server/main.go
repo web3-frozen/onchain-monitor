@@ -55,7 +55,7 @@ func main() {
 	bot := telegram.NewBot(cfg.TelegramToken, db, logger)
 
 	// Redis dedup
-	dd, err := dedup.New(cfg.RedisURL)
+	dd, err := dedup.New(cfg.RedisURL, cfg.RedisPassword)
 	if err != nil {
 		logger.Error("failed to connect to redis", "error", err)
 		os.Exit(1)

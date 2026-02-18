@@ -15,6 +15,7 @@ type Config struct {
 	TelegramToken  string
 	FrontendOrigin string
 	RedisURL       string
+	RedisPassword  string
 }
 
 func Load() Config {
@@ -23,7 +24,8 @@ func Load() Config {
 		DatabaseURL:    os.Getenv("DATABASE_URL"),
 		TelegramToken:  os.Getenv("TELEGRAM_BOT_TOKEN"),
 		FrontendOrigin: envOr("FRONTEND_ORIGIN", "*"),
-		RedisURL:       envOr("REDIS_URL", "redis://:@redis-master.redis.svc.cluster.local:6379/0"),
+		RedisURL:       envOr("REDIS_URL", "redis://redis-master.redis.svc.cluster.local:6379/0"),
+		RedisPassword:  os.Getenv("REDIS_PASSWORD"),
 	}
 
 	// If Infisical credentials are available, fetch secrets from Infisical
