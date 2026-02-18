@@ -1,24 +1,34 @@
 package sources
 
 import (
-	"context"
+	"bytes"
+	"compress/gzip"
+	"crypto/aes"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/chromedp/chromedp"
 	"github.com/web3-frozen/onchain-monitor/internal/monitor"
 )
 
 const maxpainURL = "https://www.coinglass.com/liquidation-maxpain"
+const maxpainAPI = "https://fapi.coinglass.com/api/liqHeatMap/list"
 
-// MaxPain scrapes CoinGlass liquidation max pain data via headless Chrome.
+// Bearer token extracted from CoinGlass frontend JS (public, embedded in client-side code).
+const cgBearerToken = "REDACTED_TOKEN"
+
+// MaxPain fetches CoinGlass liquidation max pain data via their internal API.
 type MaxPain struct {
 	logger  *slog.Logger
+	client  *http.Client
 	mu      sync.RWMutex
 	entries map[string]monitor.MaxPainEntry // keyed by "SYMBOL:interval" e.g. "BTC:24h"
 }
@@ -26,6 +36,7 @@ type MaxPain struct {
 func NewMaxPain(logger *slog.Logger) *MaxPain {
 	return &MaxPain{
 		logger:  logger,
+		client:  &http.Client{Timeout: 30 * time.Second},
 		entries: make(map[string]monitor.MaxPainEntry),
 	}
 }
@@ -34,7 +45,7 @@ func (m *MaxPain) Name() string  { return "maxpain" }
 func (m *MaxPain) Chain() string { return "General" }
 func (m *MaxPain) URL() string   { return maxpainURL }
 
-// GetEntry returns the latest scraped max pain data for a coin and interval.
+// GetEntry returns the latest max pain data for a coin and interval.
 func (m *MaxPain) GetEntry(symbol, interval string) (monitor.MaxPainEntry, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -43,15 +54,14 @@ func (m *MaxPain) GetEntry(symbol, interval string) (monitor.MaxPainEntry, bool)
 	return e, ok
 }
 
-// FetchSnapshot scrapes CoinGlass for all intervals and returns top-coin metrics.
+// FetchSnapshot fetches CoinGlass API for 24h interval and returns top-coin metrics.
 func (m *MaxPain) FetchSnapshot() (*monitor.Snapshot, error) {
 	allEntries := make(map[string]monitor.MaxPainEntry)
 
 	for _, interval := range []string{"24h"} {
-		// Default snapshot only scrapes 24h; other intervals scraped on-demand by alerts
-		entries, err := m.scrapeInterval(interval)
+		entries, err := m.fetchInterval(interval)
 		if err != nil {
-			return nil, fmt.Errorf("scrape maxpain %s: %w", interval, err)
+			return nil, fmt.Errorf("fetch maxpain %s: %w", interval, err)
 		}
 		for _, e := range entries {
 			key := strings.ToUpper(e.Symbol) + ":" + interval
@@ -61,7 +71,6 @@ func (m *MaxPain) FetchSnapshot() (*monitor.Snapshot, error) {
 	}
 
 	m.mu.Lock()
-	// Merge new entries (preserve other intervals already scraped)
 	for k, v := range allEntries {
 		m.entries[k] = v
 	}
@@ -88,9 +97,9 @@ func (m *MaxPain) FetchSnapshot() (*monitor.Snapshot, error) {
 	}, nil
 }
 
-// ScrapeInterval scrapes a specific interval and updates the cache.
+// ScrapeInterval fetches a specific interval and updates the cache.
 func (m *MaxPain) ScrapeInterval(interval string) error {
-	entries, err := m.scrapeInterval(interval)
+	entries, err := m.fetchInterval(interval)
 	if err != nil {
 		return err
 	}
@@ -101,6 +110,16 @@ func (m *MaxPain) ScrapeInterval(interval string) error {
 		m.entries[key] = e
 	}
 	m.mu.Unlock()
+	return nil
+}
+
+// ScrapeIntervals fetches multiple intervals.
+func (m *MaxPain) ScrapeIntervals(intervals []string) error {
+	for _, iv := range intervals {
+		if err := m.ScrapeInterval(iv); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -138,153 +157,170 @@ func fmtNum(v float64) string {
 	return fmt.Sprintf("%.4f", v)
 }
 
-// scrapeInterval uses headless Chrome to extract max pain data for a given interval.
-func (m *MaxPain) scrapeInterval(interval string) ([]monitor.MaxPainEntry, error) {
-	result, err := m.scrapeIntervals([]string{interval})
+// cgAPIResponse is the raw JSON structure from the CoinGlass API.
+type cgAPIResponse struct {
+	Code    string `json:"code"`
+	Msg     string `json:"msg"`
+	Success bool   `json:"success"`
+	Data    string `json:"data"` // AES-ECB encrypted, gzip-compressed JSON
+}
+
+// cgMaxPainItem is a single coin entry from the decrypted API response.
+type cgMaxPainItem struct {
+	Symbol                   string  `json:"symbol"`
+	Price                    float64 `json:"price"`
+	MaxLongLiquidationPrice  float64 `json:"maxLongLiquidationPrice"`
+	MaxShortLiquidationPrice float64 `json:"maxShortLiquidationPrice"`
+}
+
+// fetchInterval calls the CoinGlass API, decrypts and parses the response.
+func (m *MaxPain) fetchInterval(interval string) ([]monitor.MaxPainEntry, error) {
+	req, err := http.NewRequest("GET", maxpainAPI+"?range="+interval, nil)
 	if err != nil {
 		return nil, err
 	}
-	return result[interval], nil
-}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Origin", "https://www.coinglass.com")
+	req.Header.Set("Referer", "https://www.coinglass.com/liquidation-maxpain")
+	req.Header.Set("Authorization", "Bearer "+cgBearerToken)
+	req.Header.Set("cache-ts-v2", fmt.Sprintf("%d", time.Now().UnixMilli()))
 
-// ScrapeIntervals scrapes multiple intervals in a single Chrome session.
-func (m *MaxPain) ScrapeIntervals(intervals []string) error {
-	result, err := m.scrapeIntervals(intervals)
+	resp, err := m.client.Do(req)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("http request: %w", err)
 	}
-	m.mu.Lock()
-	for iv, entries := range result {
-		for _, e := range entries {
-			key := strings.ToUpper(e.Symbol) + ":" + iv
-			e.Interval = iv
-			m.entries[key] = e
-		}
-	}
-	m.mu.Unlock()
-	return nil
-}
+	defer resp.Body.Close()
 
-func (m *MaxPain) scrapeIntervals(intervals []string) (map[string][]monitor.MaxPainEntry, error) {
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", true),
-		chromedp.Flag("no-sandbox", true),
-		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("disable-dev-shm-usage", true),
-		chromedp.Flag("disable-crash-reporter", true),
-		chromedp.Flag("crash-dumps-dir", "/tmp"),
-		chromedp.Flag("disable-blink-features", "AutomationControlled"),
-		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"),
-		chromedp.UserDataDir("/tmp/chromedp-profile"),
-	)
-
-	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer allocCancel()
-
-	ctx, cancel := chromedp.NewContext(allocCtx)
-	defer cancel()
-
-	ctx, cancel = context.WithTimeout(ctx, time.Duration(60+20*len(intervals))*time.Second)
-	defer cancel()
-
-	// Navigate once; default view is 24h
-	if err := chromedp.Run(ctx,
-		chromedp.Navigate(maxpainURL),
-		chromedp.Sleep(5*time.Second),
-	); err != nil {
-		return nil, fmt.Errorf("chromedp navigate: %w", err)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
 	}
 
-	// Poll until table data rows appear (up to 20s)
-	var rowCount int
-	for i := 0; i < 10; i++ {
-		if err := chromedp.Run(ctx, chromedp.Evaluate(`document.querySelectorAll('table tbody tr td').length`, &rowCount)); err != nil {
-			return nil, fmt.Errorf("chromedp poll: %w", err)
-		}
-		if rowCount > 0 {
-			break
-		}
-		time.Sleep(2 * time.Second)
+	var apiResp cgAPIResponse
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
-	if rowCount == 0 {
-		// Capture page state for debugging
-		var pageURL string
-		_ = chromedp.Run(ctx, chromedp.Evaluate(`document.location.href`, &pageURL))
-		m.logger.Warn("maxpain no data rows loaded", "page_url", pageURL, "td_count", rowCount)
+	if apiResp.Code != "0" || !apiResp.Success {
+		return nil, fmt.Errorf("API error: code=%s msg=%s", apiResp.Code, apiResp.Msg)
+	}
+	if apiResp.Data == "" {
+		return nil, fmt.Errorf("API returned empty data (may need auth token update)")
 	}
 
-	result := make(map[string][]monitor.MaxPainEntry, len(intervals))
+	// Check for encryption header
+	enc := resp.Header.Get("encryption")
+	v := resp.Header.Get("v")
+	userHeader := resp.Header.Get("user")
 
-	for _, iv := range intervals {
-		// Click the tab button matching this interval value, then wait for table refresh
-		if iv != "24h" {
-			tabSelector := fmt.Sprintf(`button[value="%s"], [role="tab"][value="%s"]`, iv, iv)
-			if err := chromedp.Run(ctx,
-				chromedp.Click(tabSelector, chromedp.ByQuery),
-				chromedp.Sleep(3*time.Second),
-			); err != nil {
-				m.logger.Warn("click maxpain tab failed", "interval", iv, "error", err)
-				continue
-			}
-		}
+	if enc != "true" || userHeader == "" {
+		return nil, fmt.Errorf("response not encrypted (encryption=%s, user=%s)", enc, userHeader)
+	}
 
-		var resultJSON string
-		if err := chromedp.Run(ctx,
-			chromedp.Evaluate(extractJS, &resultJSON),
-		); err != nil {
-			m.logger.Warn("scrape maxpain interval failed", "interval", iv, "error", err)
+	// Decrypt: derive initial key from API path
+	apiPath := "/api/liqHeatMap/list"
+	var initKey string
+	if v == "0" {
+		// Use cache-ts-v2 request header
+		initKey = req.Header.Get("cache-ts-v2")
+	} else if v == "2" {
+		// Use response time header
+		initKey = resp.Header.Get("time")
+	} else {
+		// v=1 or other: use base64 of API path
+		initKey = apiPath
+	}
+	s := base64.StdEncoding.EncodeToString([]byte(initKey))
+	if len(s) > 16 {
+		s = s[:16]
+	}
+
+	// Decrypt 'user' header → get real AES key
+	decUserHex, err := aesECBDecryptToHex(userHeader, s)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt user header: %w", err)
+	}
+	realKeyBytes, err := hex.DecodeString(decUserHex)
+	if err != nil {
+		return nil, fmt.Errorf("hex decode user: %w", err)
+	}
+	// Decompress gzipped key
+	realKey, err := gunzipBytes(realKeyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("gunzip user key: %w", err)
+	}
+
+	// Decrypt data.data with real key
+	decDataHex, err := aesECBDecryptToHex(apiResp.Data, string(realKey))
+	if err != nil {
+		return nil, fmt.Errorf("decrypt data: %w", err)
+	}
+	dataBytes, err := hex.DecodeString(decDataHex)
+	if err != nil {
+		return nil, fmt.Errorf("hex decode data: %w", err)
+	}
+	// Decompress gzipped data
+	jsonData, err := gunzipBytes(dataBytes)
+	if err != nil {
+		return nil, fmt.Errorf("gunzip data: %w", err)
+	}
+
+	var items []cgMaxPainItem
+	if err := json.Unmarshal(jsonData, &items); err != nil {
+		return nil, fmt.Errorf("unmarshal items: %w", err)
+	}
+
+	entries := make([]monitor.MaxPainEntry, 0, len(items))
+	for _, item := range items {
+		if item.Symbol == "" || item.Price <= 0 {
 			continue
 		}
-
-		var entries []monitor.MaxPainEntry
-		if err := json.Unmarshal([]byte(resultJSON), &entries); err != nil {
-			m.logger.Warn("parse maxpain interval failed", "interval", iv, "error", err)
-			continue
-		}
-
-		if len(entries) == 0 {
-			var debugHTML string
-			_ = chromedp.Run(ctx, chromedp.Evaluate(`document.querySelector('table') ? document.querySelector('table').outerHTML.substring(0, 2000) : 'NO TABLE FOUND'`, &debugHTML))
-			m.logger.Warn("maxpain table empty", "interval", iv, "table_html", debugHTML)
-		}
-
-		result[iv] = entries
-		m.logger.Info("scraped maxpain data", "interval", iv, "coins", len(entries))
+		entries = append(entries, monitor.MaxPainEntry{
+			Symbol:                   item.Symbol,
+			Price:                    item.Price,
+			MaxLongLiquidationPrice:  item.MaxLongLiquidationPrice,
+			MaxShortLiquidationPrice: item.MaxShortLiquidationPrice,
+		})
 	}
 
-	if len(result) == 0 {
-		return nil, fmt.Errorf("no maxpain data scraped")
-	}
-	return result, nil
+	m.logger.Info("fetched maxpain data", "interval", interval, "coins", len(entries))
+	return entries, nil
 }
 
-// extractJS is evaluated in the browser to pull max pain data from the rendered table.
-const extractJS = `
-(() => {
-	const rows = document.querySelectorAll('.ant-table-tbody tr.ant-table-row');
-	const data = [];
-	rows.forEach(row => {
-		const cells = row.querySelectorAll('td');
-		if (cells.length < 8) return;
-		// Column layout: (expand) | Ranking | Symbol | Price | Short Max Pain | Short Distance | Long Max Pain | Long Distance
-		const symbol = (cells[2].textContent || '').trim().split(/\s/)[0];
-		const parseNum = s => {
-			s = (s || '').replace(/[$,\s%]/g, '');
-			const n = parseFloat(s);
-			return isNaN(n) ? 0 : n;
-		};
-		const price = parseNum(cells[3].textContent);
-		const shortMaxPain = parseNum(cells[4].textContent);
-		const longMaxPain = parseNum(cells[6].textContent);
-		if (symbol && price > 0) {
-			data.push({
-				symbol: symbol,
-				price: price,
-				maxLongLiquidationPrice: longMaxPain,
-				maxShortLiquidationPrice: shortMaxPain,
-			});
+// aesECBDecryptToHex decrypts a base64-encoded ciphertext with AES-ECB and returns hex string.
+func aesECBDecryptToHex(cipherB64, key string) (string, error) {
+	ciphertext, err := base64.StdEncoding.DecodeString(cipherB64)
+	if err != nil {
+		return "", fmt.Errorf("base64 decode: %w", err)
+	}
+	block, err := aes.NewCipher([]byte(key))
+	if err != nil {
+		return "", fmt.Errorf("aes new cipher: %w", err)
+	}
+	bs := block.BlockSize()
+	if len(ciphertext)%bs != 0 {
+		return "", fmt.Errorf("ciphertext length %d not multiple of block size %d", len(ciphertext), bs)
+	}
+	plaintext := make([]byte, len(ciphertext))
+	for i := 0; i < len(ciphertext); i += bs {
+		block.Decrypt(plaintext[i:i+bs], ciphertext[i:i+bs])
+	}
+	// Remove PKCS7 padding
+	if len(plaintext) > 0 {
+		pad := int(plaintext[len(plaintext)-1])
+		if pad > 0 && pad <= bs {
+			plaintext = plaintext[:len(plaintext)-pad]
 		}
-	});
-	return JSON.stringify(data);
-})()
-`
+	}
+	return hex.EncodeToString(plaintext), nil
+}
+
+// gunzipBytes decompresses gzip data.
+func gunzipBytes(data []byte) ([]byte, error) {
+	r, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return io.ReadAll(r)
+}

@@ -7,9 +7,8 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /server ./cmd/server
 
 FROM alpine:3.20
-RUN apk add --no-cache chromium ca-certificates tzdata \
+RUN apk add --no-cache ca-certificates tzdata \
     && adduser -D -u 10001 nonroot
-ENV CHROME_BIN=/usr/bin/chromium-browser
 COPY --from=builder /server /server
 EXPOSE 8080
 USER nonroot
