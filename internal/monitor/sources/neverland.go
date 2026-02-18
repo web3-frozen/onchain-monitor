@@ -14,7 +14,7 @@ const (
 	neverlandTVLAPI  = "https://api.llama.fi/tvl/neverland"
 	neverlandDataAPI = "https://api.llama.fi/protocol/neverland"
 	neverlandFeesAPI = "https://api.llama.fi/summary/fees/neverland"
-	dustPriceAPI     = "https://api.dexscreener.com/latest/dex/search?q=DUST%20monad"
+	dustPriceAPI     = "https://api.dexscreener.com/latest/dex/pairs/monad/0xD15965968fe8BF2BAbbe39b2FC5de1Ab6749141F"
 )
 
 type Neverland struct {
@@ -63,7 +63,7 @@ func (n *Neverland) FetchSnapshot() (*monitor.Snapshot, error) {
 		"fees_24h":   "DefiLlama",
 		"fees_7d":    "DefiLlama",
 		"fees_30d":   "DefiLlama",
-		"price":      "DexScreener",
+		"price":      "Uniswap (Monad)",
 	}
 
 	return &monitor.Snapshot{
@@ -183,40 +183,18 @@ func (n *Neverland) fetchDustPrice() (float64, error) {
 		return 0, err
 	}
 	var result struct {
-		Pairs []struct {
-			ChainID   string `json:"chainId"`
-			DexID     string `json:"dexId"`
-			BaseToken struct {
-				Symbol string `json:"symbol"`
-			} `json:"baseToken"`
-			PriceUsd  string `json:"priceUsd"`
-			Liquidity struct {
-				Usd float64 `json:"usd"`
-			} `json:"liquidity"`
-		} `json:"pairs"`
+		Pair struct {
+			PriceNative string `json:"priceNative"`
+		} `json:"pair"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
 		return 0, fmt.Errorf("unmarshal dexscreener: %w", err)
 	}
-	// Find DUST on Monad chain — pick the pair with the highest liquidity
-	var bestPrice float64
-	var bestLiquidity float64
-	for _, p := range result.Pairs {
-		if p.ChainID == "monad" && p.BaseToken.Symbol == "DUST" {
-			var price float64
-			if _, err := fmt.Sscanf(p.PriceUsd, "%f", &price); err != nil || price <= 0 {
-				continue
-			}
-			if p.Liquidity.Usd > bestLiquidity {
-				bestLiquidity = p.Liquidity.Usd
-				bestPrice = price
-			}
-		}
+	var price float64
+	if _, err := fmt.Sscanf(result.Pair.PriceNative, "%f", &price); err != nil || price <= 0 {
+		return 0, fmt.Errorf("DUST price not found on Monad")
 	}
-	if bestPrice > 0 {
-		return bestPrice, nil
-	}
-	return 0, fmt.Errorf("DUST price not found on Monad")
+	return price, nil
 }
 
 func (n *Neverland) httpGet(url string) ([]byte, error) {
