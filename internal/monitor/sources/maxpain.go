@@ -171,6 +171,9 @@ func (m *MaxPain) scrapeIntervals(intervals []string) (map[string][]monitor.MaxP
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
+		chromedp.Flag("disable-crash-reporter", true),
+		chromedp.Flag("crash-dumps-dir", "/tmp"),
+		chromedp.UserDataDir("/tmp/chromedp-profile"),
 	)
 
 	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
