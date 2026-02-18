@@ -3,6 +3,7 @@ package sources
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -79,13 +80,15 @@ func (o *MerklOpportunity) ProtocolName() string {
 // Merkl fetches yield opportunities from the Merkl API.
 type Merkl struct {
 	client *http.Client
+	logger *slog.Logger
 	mu     sync.RWMutex
 	opps   []MerklOpportunity // latest fetched opportunities
 }
 
-func NewMerkl() *Merkl {
+func NewMerkl(logger *slog.Logger) *Merkl {
 	return &Merkl{
 		client: &http.Client{Timeout: 30 * time.Second},
+		logger: logger,
 	}
 }
 
@@ -102,26 +105,42 @@ func (m *Merkl) GetOpportunities() []MerklOpportunity {
 	return out
 }
 
-// GetFilteredOpportunities returns cached opportunities filtered by user criteria.
+// GetFilteredOpportunities fetches opportunities from Merkl API with user criteria.
+// Uses Merkl's own stablecoin classification instead of client-side filtering.
 func (m *Merkl) GetFilteredOpportunities(minAPR, minTVL float64, action, stableFilter string) []monitor.MerklOpp {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	if action == "ALL" {
+		action = "LEND,BORROW,HOLD"
+	}
+
+	stableParam := ""
+	switch stableFilter {
+	case "stablecoin":
+		stableParam = "&stablecoin=true"
+	case "non-stablecoin":
+		stableParam = "&stablecoin=false"
+	}
+
+	url := fmt.Sprintf("%s?action=%s&minimumApr=%.0f&minimumTvl=%.0f&sort=apr&order=desc&items=50&status=LIVE%s",
+		merklAPI, action, minAPR, minTVL, stableParam)
+
+	resp, err := m.client.Get(url)
+	if err != nil {
+		m.logger.Error("merkl filter API failed", "error", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+
+	var opps []MerklOpportunity
+	if err := json.NewDecoder(resp.Body).Decode(&opps); err != nil {
+		return nil
+	}
 
 	var result []monitor.MerklOpp
-	for _, o := range m.opps {
-		if o.APR < minAPR || o.TVL < minTVL {
-			continue
-		}
-		if action != "ALL" && !strings.Contains(action, o.Action) && !strings.EqualFold(action, o.Action) {
-			continue
-		}
-		isStable := o.IsStablecoin()
-		if stableFilter == "stablecoin" && !isStable {
-			continue
-		}
-		if stableFilter == "non-stablecoin" && isStable {
-			continue
-		}
+	for _, o := range opps {
 		result = append(result, monitor.MerklOpp{
 			ID:         o.ID,
 			Name:       o.Name,
@@ -132,7 +151,7 @@ func (m *Merkl) GetFilteredOpportunities(minAPR, minTVL float64, action, stableF
 			Protocol:   o.ProtocolName(),
 			DepositURL: o.DepositURL,
 			MerklURL:   o.MerklURL(),
-			Stablecoin: isStable,
+			Stablecoin: o.IsStablecoin(),
 		})
 	}
 	return result
