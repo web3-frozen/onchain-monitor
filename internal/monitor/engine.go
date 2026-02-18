@@ -195,7 +195,7 @@ func (e *Engine) pollAll(ctx context.Context) {
 							continue
 						}
 						e.sendValueAlert(sub.ChatID, src, metric, currVal, sub.ThresholdValue, sub.Direction)
-						e.dedup.Record(ctx, alertKey, 7*24*time.Hour)
+						e.dedup.Record(ctx, alertKey)
 					} else {
 						// Condition no longer met — clear so alert can fire again next time
 						e.dedup.Clear(ctx, alertKey)
@@ -231,7 +231,7 @@ func (e *Engine) pollAll(ctx context.Context) {
 						continue
 					}
 					e.sendMetricAlertToUser(sub.ChatID, src, metric, prevVal, currVal, change, sub.WindowMinutes, sub.Direction)
-					e.dedup.Record(ctx, alertKey, time.Duration(sub.WindowMinutes)*time.Minute)
+					e.dedup.Record(ctx, alertKey)
 				} else {
 					// Condition no longer met — clear so alert can fire again
 					alertKey := fmt.Sprintf("%d:%s:%s:%s", sub.ChatID, name, metric, sub.Direction)
@@ -330,7 +330,7 @@ func (e *Engine) checkMaxpainAlerts(ctx context.Context) {
 				continue
 			}
 			e.sendMaxpainAlert(sub.ChatID, maxpainSrc, coin, side, interval, entry.Price, maxpainPrice, dist)
-			e.dedup.Record(ctx, alertKey, 7*24*time.Hour)
+			e.dedup.Record(ctx, alertKey)
 		} else {
 			alertKey := fmt.Sprintf("maxpain:%d:%s:%s:%s", sub.ChatID, coin, side, interval)
 			e.dedup.Clear(ctx, alertKey)
@@ -436,10 +436,10 @@ func (e *Engine) checkMerklAlerts(ctx context.Context) {
 		// Send as a single grouped message
 		e.sendMerklGroupedAlert(sub.ChatID, newOpps)
 
-		// Mark all as alerted (7d TTL — each opportunity alerts only once)
+		// Mark all as alerted permanently — each opportunity alerts only once per user
 		for _, opp := range newOpps {
 			alertKey := fmt.Sprintf("merkl:%d:%s", sub.ChatID, opp.ID)
-			e.dedup.Record(ctx, alertKey, 7*24*time.Hour)
+			e.dedup.Record(ctx, alertKey)
 		}
 	}
 }
@@ -613,7 +613,7 @@ func (e *Engine) sendDueReports(ctx context.Context, hour int) {
 				continue
 			}
 			metrics.AlertsSentTotal.WithLabelValues(name, "daily_report").Inc()
-			e.dedup.Record(ctx, dedupKey, 24*time.Hour)
+			e.dedup.Record(ctx, dedupKey)
 			sent++
 		}
 		if sent > 0 {

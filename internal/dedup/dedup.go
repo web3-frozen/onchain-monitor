@@ -42,9 +42,9 @@ func (d *Deduplicator) AlreadySent(ctx context.Context, key string) bool {
 	return err == nil && exists > 0
 }
 
-// Record marks key as sent with the given TTL.
-func (d *Deduplicator) Record(ctx context.Context, key string, ttl time.Duration) {
-	d.rdb.Set(ctx, key, "1", ttl)
+// Record marks key as sent permanently (no expiry).
+func (d *Deduplicator) Record(ctx context.Context, key string) {
+	d.rdb.Set(ctx, key, "1", 0) // 0 = no expiry
 }
 
 // Clear removes a dedup key so the alert can fire again when the condition resets.
