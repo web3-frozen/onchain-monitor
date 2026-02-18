@@ -16,35 +16,17 @@ import (
 
 const maxpainURL = "https://www.coinglass.com/liquidation-maxpain"
 
-// maxpainIntervals maps window_minutes to CoinGlass type param.
-var maxpainIntervals = map[int]string{
-	720:   "12h",
-	1440:  "24h",
-	2880:  "48h",
-	4320:  "3d",
-	10080: "7d",
-}
-
-// MaxPainEntry holds liquidation max pain data for a single coin.
-type MaxPainEntry struct {
-	Symbol                   string  `json:"symbol"`
-	Price                    float64 `json:"price"`
-	MaxLongLiquidationPrice  float64 `json:"maxLongLiquidationPrice"`
-	MaxShortLiquidationPrice float64 `json:"maxShortLiquidationPrice"`
-	Interval                 string  `json:"interval"` // e.g. "24h"
-}
-
 // MaxPain scrapes CoinGlass liquidation max pain data via headless Chrome.
 type MaxPain struct {
 	logger  *slog.Logger
 	mu      sync.RWMutex
-	entries map[string]MaxPainEntry // keyed by "SYMBOL:interval" e.g. "BTC:24h"
+	entries map[string]monitor.MaxPainEntry // keyed by "SYMBOL:interval" e.g. "BTC:24h"
 }
 
 func NewMaxPain(logger *slog.Logger) *MaxPain {
 	return &MaxPain{
 		logger:  logger,
-		entries: make(map[string]MaxPainEntry),
+		entries: make(map[string]monitor.MaxPainEntry),
 	}
 }
 
@@ -53,7 +35,7 @@ func (m *MaxPain) Chain() string { return "General" }
 func (m *MaxPain) URL() string   { return maxpainURL }
 
 // GetEntry returns the latest scraped max pain data for a coin and interval.
-func (m *MaxPain) GetEntry(symbol, interval string) (MaxPainEntry, bool) {
+func (m *MaxPain) GetEntry(symbol, interval string) (monitor.MaxPainEntry, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	key := strings.ToUpper(symbol) + ":" + interval
@@ -61,17 +43,9 @@ func (m *MaxPain) GetEntry(symbol, interval string) (MaxPainEntry, bool) {
 	return e, ok
 }
 
-// IntervalFromMinutes converts window_minutes to a CoinGlass interval string.
-func IntervalFromMinutes(minutes int) string {
-	if iv, ok := maxpainIntervals[minutes]; ok {
-		return iv
-	}
-	return "24h" // default
-}
-
 // FetchSnapshot scrapes CoinGlass for all intervals and returns top-coin metrics.
 func (m *MaxPain) FetchSnapshot() (*monitor.Snapshot, error) {
-	allEntries := make(map[string]MaxPainEntry)
+	allEntries := make(map[string]monitor.MaxPainEntry)
 
 	for _, interval := range []string{"24h"} {
 		// Default snapshot only scrapes 24h; other intervals scraped on-demand by alerts
@@ -165,7 +139,7 @@ func fmtNum(v float64) string {
 }
 
 // scrapeInterval uses headless Chrome to extract max pain data for a given interval.
-func (m *MaxPain) scrapeInterval(interval string) ([]MaxPainEntry, error) {
+func (m *MaxPain) scrapeInterval(interval string) ([]monitor.MaxPainEntry, error) {
 	result, err := m.scrapeIntervals([]string{interval})
 	if err != nil {
 		return nil, err
@@ -191,7 +165,7 @@ func (m *MaxPain) ScrapeIntervals(intervals []string) error {
 	return nil
 }
 
-func (m *MaxPain) scrapeIntervals(intervals []string) (map[string][]MaxPainEntry, error) {
+func (m *MaxPain) scrapeIntervals(intervals []string) (map[string][]monitor.MaxPainEntry, error) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", true),
 		chromedp.Flag("no-sandbox", true),
@@ -217,7 +191,7 @@ func (m *MaxPain) scrapeIntervals(intervals []string) (map[string][]MaxPainEntry
 		return nil, fmt.Errorf("chromedp navigate: %w", err)
 	}
 
-	result := make(map[string][]MaxPainEntry, len(intervals))
+	result := make(map[string][]monitor.MaxPainEntry, len(intervals))
 
 	for _, iv := range intervals {
 		// Click the tab button matching this interval value, then wait for table refresh
@@ -240,7 +214,7 @@ func (m *MaxPain) scrapeIntervals(intervals []string) (map[string][]MaxPainEntry
 			continue
 		}
 
-		var entries []MaxPainEntry
+		var entries []monitor.MaxPainEntry
 		if err := json.Unmarshal([]byte(resultJSON), &entries); err != nil {
 			m.logger.Warn("parse maxpain interval failed", "interval", iv, "error", err)
 			continue

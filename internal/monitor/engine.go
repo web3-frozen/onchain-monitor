@@ -250,7 +250,7 @@ func (e *Engine) checkMaxpainAlerts(ctx context.Context) {
 
 	// Type-assert to access interval-aware methods
 	type intervalScraper interface {
-		GetEntry(symbol, interval string) (sources.MaxPainEntry, bool)
+		GetEntry(symbol, interval string) (MaxPainEntry, bool)
 		ScrapeIntervals(intervals []string) error
 	}
 	mp, ok := maxpainSrc.(intervalScraper)
@@ -266,7 +266,7 @@ func (e *Engine) checkMaxpainAlerts(ctx context.Context) {
 	// Collect unique intervals needed and scrape them in one Chrome session
 	needed := make(map[string]bool)
 	for _, sub := range subscribers {
-		iv := sources.IntervalFromMinutes(sub.WindowMinutes)
+		iv := IntervalFromMinutes(sub.WindowMinutes)
 		if iv != "24h" { // 24h already scraped in FetchSnapshot
 			needed[iv] = true
 		}
@@ -286,7 +286,7 @@ func (e *Engine) checkMaxpainAlerts(ctx context.Context) {
 		if coin == "" {
 			continue
 		}
-		interval := sources.IntervalFromMinutes(sub.WindowMinutes)
+		interval := IntervalFromMinutes(sub.WindowMinutes)
 
 		entry, ok := mp.GetEntry(coin, interval)
 		if !ok || entry.Price <= 0 {
