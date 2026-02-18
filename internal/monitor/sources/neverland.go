@@ -57,11 +57,21 @@ func (n *Neverland) FetchSnapshot() (*monitor.Snapshot, error) {
 		metrics["price"] = price
 	}
 
+	dataSources := map[string]string{
+		"tvl":        "DefiLlama",
+		"vedust_tvl": "DefiLlama",
+		"fees_24h":   "DefiLlama",
+		"fees_7d":    "DefiLlama",
+		"fees_30d":   "DefiLlama",
+		"price":      "DexScreener",
+	}
+
 	return &monitor.Snapshot{
-		Source:    "neverland",
-		Chain:     "Monad",
-		Metrics:   metrics,
-		FetchedAt: time.Now(),
+		Source:      "neverland",
+		Chain:       "Monad",
+		Metrics:     metrics,
+		DataSources: dataSources,
+		FetchedAt:   time.Now(),
 	}, nil
 }
 
@@ -175,26 +185,36 @@ func (n *Neverland) fetchDustPrice() (float64, error) {
 	var result struct {
 		Pairs []struct {
 			ChainID   string `json:"chainId"`
+			DexID     string `json:"dexId"`
 			BaseToken struct {
 				Symbol string `json:"symbol"`
 			} `json:"baseToken"`
-			PriceUsd string `json:"priceUsd"`
+			PriceUsd  string `json:"priceUsd"`
+			Liquidity struct {
+				Usd float64 `json:"usd"`
+			} `json:"liquidity"`
 		} `json:"pairs"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
 		return 0, fmt.Errorf("unmarshal dexscreener: %w", err)
 	}
-	// Find DUST on Monad chain
+	// Find DUST on Monad chain — pick the pair with the highest liquidity
+	var bestPrice float64
+	var bestLiquidity float64
 	for _, p := range result.Pairs {
 		if p.ChainID == "monad" && p.BaseToken.Symbol == "DUST" {
 			var price float64
-			if _, err := fmt.Sscanf(p.PriceUsd, "%f", &price); err != nil {
+			if _, err := fmt.Sscanf(p.PriceUsd, "%f", &price); err != nil || price <= 0 {
 				continue
 			}
-			if price > 0 {
-				return price, nil
+			if p.Liquidity.Usd > bestLiquidity {
+				bestLiquidity = p.Liquidity.Usd
+				bestPrice = price
 			}
 		}
+	}
+	if bestPrice > 0 {
+		return bestPrice, nil
 	}
 	return 0, fmt.Errorf("DUST price not found on Monad")
 }

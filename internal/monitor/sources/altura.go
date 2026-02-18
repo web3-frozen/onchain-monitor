@@ -56,6 +56,11 @@ func (a *Altura) FetchSnapshot() (*monitor.Snapshot, error) {
 			"price": price,
 			"apr":   apr,
 		},
+		DataSources: map[string]string{
+			"tvl":   "Ormi Labs Subgraph",
+			"price": "Ormi Labs Subgraph",
+			"apr":   "Ormi Labs Subgraph",
+		},
 		FetchedAt: time.Now(),
 	}, nil
 }

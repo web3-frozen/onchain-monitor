@@ -26,21 +26,33 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     id BIGSERIAL PRIMARY KEY,
     tg_user_id BIGINT NOT NULL REFERENCES telegram_users(id) ON DELETE CASCADE,
     event_id INT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    threshold_pct DOUBLE PRECISION NOT NULL DEFAULT 10,
+    window_minutes INT NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(tg_user_id, event_id)
 );
 
+-- Add columns if upgrading from older schema
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS threshold_pct DOUBLE PRECISION NOT NULL DEFAULT 10;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS window_minutes INT NOT NULL DEFAULT 1;
+
 -- Rename old event names (idempotent — ignore if old names don't exist)
-UPDATE events SET name = 'altura_drop', description = 'Alert when Altura metrics drop >10% in 1 minute'
+UPDATE events SET name = 'altura_drop', description = 'Alert when Altura metrics drop'
     WHERE name = 'altura_tvl_drop';
 
 -- Seed events (idempotent)
 INSERT INTO events (name, description, category) VALUES
-    ('altura_drop', 'Alert when Altura metrics drop >10% in 1 minute', 'altura'),
-    ('altura_daily_report', 'Daily 8am HKT report — Altura TVL, AVLT price, APR', 'altura'),
-    ('neverland_drop', 'Alert when Neverland metrics drop >10% in 1 minute', 'neverland'),
-    ('neverland_daily_report', 'Daily 8am HKT report — Neverland TVL, veDUST, DUST price, fees', 'neverland')
+    ('altura_drop', 'Alert when Altura metrics drop', 'altura'),
+    ('altura_daily_report', 'Daily 8am UTC+8 report — Altura TVL, AVLT price, APR', 'altura'),
+    ('neverland_drop', 'Alert when Neverland metrics drop', 'neverland'),
+    ('neverland_daily_report', 'Daily 8am UTC+8 report — Neverland TVL, veDUST, DUST price, fees', 'neverland')
 ON CONFLICT (name) DO NOTHING;
+
+-- Update existing descriptions for HKT -> UTC+8 and configurable thresholds
+UPDATE events SET description = 'Alert when Altura metrics drop' WHERE name = 'altura_drop';
+UPDATE events SET description = 'Daily 8am UTC+8 report — Altura TVL, AVLT price, APR' WHERE name = 'altura_daily_report';
+UPDATE events SET description = 'Alert when Neverland metrics drop' WHERE name = 'neverland_drop';
+UPDATE events SET description = 'Daily 8am UTC+8 report — Neverland TVL, veDUST, DUST price, fees' WHERE name = 'neverland_daily_report';
 `
 
 func (s *Store) Migrate(ctx context.Context) error {

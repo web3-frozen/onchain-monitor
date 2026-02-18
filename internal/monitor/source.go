@@ -24,10 +24,11 @@ type Source interface {
 
 // Snapshot represents a point-in-time reading from a data source.
 type Snapshot struct {
-	Source    string             `json:"source"`
-	Chain    string             `json:"chain"`
-	Metrics  map[string]float64 `json:"metrics"`
-	FetchedAt time.Time         `json:"fetched_at"`
+	Source      string             `json:"source"`
+	Chain       string             `json:"chain"`
+	Metrics     map[string]float64 `json:"metrics"`
+	DataSources map[string]string  `json:"data_sources"`
+	FetchedAt   time.Time          `json:"fetched_at"`
 }
 
 // legacy convenience getters used by existing code

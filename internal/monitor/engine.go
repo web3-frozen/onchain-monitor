@@ -14,7 +14,7 @@ import (
 
 const (
 	pollInterval   = 1 * time.Minute
-	dropThreshold  = 0.10 // 10%
+	maxHistoryLen  = 60 // keep 60 minutes of snapshots
 )
 
 // AlertFunc sends a message to a Telegram chat.
@@ -23,21 +23,23 @@ type AlertFunc func(chatID int64, message string) error
 // Engine is the core monitoring engine that polls registered data sources
 // and triggers alerts based on rules.
 type Engine struct {
-	store     *store.Store
-	logger    *slog.Logger
-	alertFn   AlertFunc
-	sources   map[string]Source
-	lastSnap  map[string]*Snapshot
-	mu        sync.RWMutex
+	store       *store.Store
+	logger      *slog.Logger
+	alertFn     AlertFunc
+	sources     map[string]Source
+	snapHistory map[string][]*Snapshot
+	lastAlerted map[string]time.Time
+	mu          sync.RWMutex
 }
 
 func NewEngine(s *store.Store, logger *slog.Logger, alertFn AlertFunc) *Engine {
 	return &Engine{
-		store:    s,
-		logger:   logger,
-		alertFn:  alertFn,
-		sources:  make(map[string]Source),
-		lastSnap: make(map[string]*Snapshot),
+		store:       s,
+		logger:      logger,
+		alertFn:     alertFn,
+		sources:     make(map[string]Source),
+		snapHistory: make(map[string][]*Snapshot),
+		lastAlerted: make(map[string]time.Time),
 	}
 }
 
@@ -74,7 +76,11 @@ func (e *Engine) Chains() []string {
 func (e *Engine) GetSnapshot(source string) *Snapshot {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	return e.lastSnap[source]
+	history := e.snapHistory[source]
+	if len(history) == 0 {
+		return nil
+	}
+	return history[len(history)-1]
 }
 
 // Run starts the polling loop and daily report scheduler.
@@ -85,7 +91,7 @@ func (e *Engine) Run(ctx context.Context) {
 	pollTicker := time.NewTicker(pollInterval)
 	defer pollTicker.Stop()
 
-	// Schedule daily report at 8am HKT (UTC+8 = 00:00 UTC)
+	// Schedule daily report at 8am UTC+8
 	reportTimer := e.nextReportTimer()
 
 	for {
@@ -110,39 +116,60 @@ func (e *Engine) pollAll(ctx context.Context) {
 		}
 
 		e.mu.Lock()
-		prev := e.lastSnap[name]
-		e.lastSnap[name] = snap
+		history := e.snapHistory[name]
+		history = append(history, snap)
+		if len(history) > maxHistoryLen {
+			history = history[len(history)-maxHistoryLen:]
+		}
+		e.snapHistory[name] = history
 		e.mu.Unlock()
 
 		e.logger.Info("snapshot", "source", name, "metrics", snap.Metrics)
 
-		// Check all metrics for drops ≥ threshold
-		if prev != nil {
+		// Per-subscriber threshold checking
+		eventName := name + "_drop"
+		subscribers, err := e.store.GetSubscribersWithThresholds(ctx, eventName)
+		if err != nil {
+			e.logger.Error("get subscribers with thresholds failed", "event", eventName, "error", err)
+			continue
+		}
+
+		e.mu.RLock()
+		hist := e.snapHistory[name]
+		e.mu.RUnlock()
+
+		for _, sub := range subscribers {
+			if sub.WindowMinutes < 1 || sub.WindowMinutes >= len(hist) {
+				continue
+			}
+			pastSnap := hist[len(hist)-1-sub.WindowMinutes]
+			threshold := sub.ThresholdPct / 100
+
 			for metric, currVal := range snap.Metrics {
-				prevVal, ok := prev.Metrics[metric]
+				prevVal, ok := pastSnap.Metrics[metric]
 				if !ok || prevVal <= 0 {
 					continue
 				}
 				drop := (prevVal - currVal) / prevVal
-				if drop >= dropThreshold {
-					e.triggerDropAlert(ctx, src, metric, prevVal, currVal, drop)
+				if drop >= threshold {
+					alertKey := fmt.Sprintf("%d:%s:%s", sub.ChatID, name, metric)
+					if lastTime, ok := e.lastAlerted[alertKey]; ok {
+						if time.Since(lastTime) < time.Duration(sub.WindowMinutes)*time.Minute {
+							continue
+						}
+					}
+					e.sendDropAlertToUser(sub.ChatID, src, metric, prevVal, currVal, drop, sub.WindowMinutes)
+					e.lastAlerted[alertKey] = time.Now()
 				}
 			}
 		}
 	}
 }
 
-func (e *Engine) triggerDropAlert(ctx context.Context, src Source, metric string, prevVal, currVal, dropPct float64) {
-	eventName := src.Name() + "_drop"
-	chatIDs, err := e.store.GetSubscriberChatIDs(ctx, eventName)
-	if err != nil {
-		e.logger.Error("get subscribers failed", "event", eventName, "error", err)
-		return
-	}
-
+func (e *Engine) sendDropAlertToUser(chatID int64, src Source, metric string, prevVal, currVal, dropPct float64, windowMin int) {
 	dropAmt := prevVal - currVal
 	msg := fmt.Sprintf("🚨 %s %s DROP ALERT\n\n"+
-		"%s dropped by %.1f%% in the last minute!\n"+
+		"%s dropped by %.1f%% in the last %d minute(s)!\n"+
 		"Previous: $%s\n"+
 		"Current:  $%s\n"+
 		"Drop:     -$%s\n\n"+
@@ -151,12 +178,15 @@ func (e *Engine) triggerDropAlert(ctx context.Context, src Source, metric string
 		stringToUpper(metric),
 		stringToUpper(metric),
 		dropPct*100,
+		windowMin,
 		formatNum(prevVal),
 		formatNum(currVal),
 		formatNum(dropAmt),
 		src.URL())
 
-	e.broadcast(chatIDs, msg)
+	if err := e.alertFn(chatID, msg); err != nil {
+		e.logger.Error("send alert failed", "chat_id", chatID, "error", err)
+	}
 }
 
 func (e *Engine) sendDailyReports(ctx context.Context) {
@@ -190,9 +220,9 @@ func (e *Engine) broadcast(chatIDs []int64, msg string) {
 }
 
 func (e *Engine) nextReportTimer() *time.Timer {
-	hkt := time.FixedZone("HKT", 8*60*60)
-	now := time.Now().In(hkt)
-	next := time.Date(now.Year(), now.Month(), now.Day(), 8, 0, 0, 0, hkt)
+	utc8 := time.FixedZone("UTC+8", 8*60*60)
+	now := time.Now().In(utc8)
+	next := time.Date(now.Year(), now.Month(), now.Day(), 8, 0, 0, 0, utc8)
 	if now.After(next) {
 		next = next.Add(24 * time.Hour)
 	}

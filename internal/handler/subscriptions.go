@@ -39,8 +39,10 @@ func ListSubscriptions(s *store.Store) http.HandlerFunc {
 
 func Subscribe(s *store.Store) http.HandlerFunc {
 	type request struct {
-		TgChatID int64 `json:"tg_chat_id"`
-		EventID  int   `json:"event_id"`
+		TgChatID      int64   `json:"tg_chat_id"`
+		EventID       int     `json:"event_id"`
+		ThresholdPct  float64 `json:"threshold_pct"`
+		WindowMinutes int     `json:"window_minutes"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +57,15 @@ func Subscribe(s *store.Store) http.HandlerFunc {
 			return
 		}
 
-		sub, err := s.Subscribe(r.Context(), req.TgChatID, req.EventID)
+		// Defaults for non-drop events
+		if req.ThresholdPct <= 0 {
+			req.ThresholdPct = 10
+		}
+		if req.WindowMinutes <= 0 {
+			req.WindowMinutes = 1
+		}
+
+		sub, err := s.Subscribe(r.Context(), req.TgChatID, req.EventID, req.ThresholdPct, req.WindowMinutes)
 		if err != nil {
 			http.Error(w, `{"error":"failed to subscribe"}`, http.StatusInternalServerError)
 			return
