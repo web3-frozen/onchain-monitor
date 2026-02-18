@@ -65,6 +65,7 @@ func loadFromInfisical(cfg *Config, clientID, clientSecret string) {
 
 	secrets := map[string]*string{
 		"TELEGRAM_BOT_TOKEN": &cfg.TelegramToken,
+		"REDIS_PASSWORD":     &cfg.RedisPassword,
 	}
 
 	for key, target := range secrets {
