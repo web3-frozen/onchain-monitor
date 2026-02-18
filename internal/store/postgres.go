@@ -423,6 +423,48 @@ func (s *Store) CleanupOldLiquidationEvents(ctx context.Context, maxAge time.Dur
 	return tag.RowsAffected(), nil
 }
 
+// --- Notification Log ---
+
+type NotificationLog struct {
+	ID        int64     `json:"id"`
+	TgChatID  int64     `json:"tg_chat_id"`
+	AlertType string    `json:"alert_type"`
+	EventName string    `json:"event_name"`
+	Summary   string    `json:"summary"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (s *Store) LogNotification(ctx context.Context, chatID int64, alertType, eventName, summary string) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO notification_log (tg_chat_id, alert_type, event_name, summary) VALUES ($1, $2, $3, $4)`,
+		chatID, alertType, eventName, summary)
+	return err
+}
+
+func (s *Store) ListNotifications(ctx context.Context, chatID int64, limit int) ([]NotificationLog, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, tg_chat_id, alert_type, event_name, summary, created_at
+		 FROM notification_log WHERE tg_chat_id = $1 ORDER BY created_at DESC LIMIT $2`,
+		chatID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []NotificationLog
+	for rows.Next() {
+		var l NotificationLog
+		if err := rows.Scan(&l.ID, &l.TgChatID, &l.AlertType, &l.EventName, &l.Summary, &l.CreatedAt); err != nil {
+			return nil, err
+		}
+		logs = append(logs, l)
+	}
+	return logs, nil
+}
+
 // Pool exposes the underlying connection pool for use by other packages.
 func (s *Store) Pool() *pgxpool.Pool {
 	return s.pool

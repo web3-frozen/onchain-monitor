@@ -77,6 +77,17 @@ INSERT INTO events (name, description, category) VALUES
     ('general_merkl_alert', 'Alert on new Merkl yield opportunities', 'general')
 ON CONFLICT (name) DO NOTHING;
 
+-- Notification log for debugging and audit trail
+CREATE TABLE IF NOT EXISTS notification_log (
+    id BIGSERIAL PRIMARY KEY,
+    tg_chat_id BIGINT NOT NULL,
+    alert_type TEXT NOT NULL,
+    event_name TEXT NOT NULL DEFAULT '',
+    summary TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_notif_log_chat_time ON notification_log(tg_chat_id, created_at DESC);
+
 -- Update existing descriptions
 UPDATE events SET description = 'Alert when Altura metrics' WHERE name = 'altura_metric_alert';
 UPDATE events SET description = 'Daily UTC+8 report — Altura TVL, AVLT price, APR' WHERE name = 'altura_daily_report';

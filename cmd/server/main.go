@@ -107,6 +107,7 @@ func main() {
 		r.Delete("/subscriptions/{id}", handler.Unsubscribe(db, dd))
 		r.Get("/stats", handler.Stats(engine))
 		r.Get("/stats/meta", handler.StatsMetadata(engine))
+		r.Get("/notifications", handler.ListNotifications(db))
 	})
 
 	srv := &http.Server{

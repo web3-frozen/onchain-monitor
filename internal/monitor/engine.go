@@ -361,6 +361,8 @@ func (e *Engine) sendMaxpainAlert(chatID int64, src Source, coin, side, interval
 		e.logger.Error("send maxpain alert failed", "chat_id", chatID, "error", err)
 	} else {
 		metrics.AlertsSentTotal.WithLabelValues("maxpain", "maxpain_alert").Inc()
+		e.logNotification(chatID, "maxpain", "general_maxpain_alert",
+			fmt.Sprintf("%s %s within %.1f%% of max pain $%s (interval: %s)", coin, side, dist, formatNum(maxpainPrice), interval))
 	}
 }
 
@@ -495,6 +497,12 @@ func (e *Engine) sendMerklGroupedAlert(chatID int64, opps []MerklOpp) {
 		e.logger.Error("send merkl alert failed", "chat_id", chatID, "error", err)
 	} else {
 		metrics.AlertsSentTotal.WithLabelValues("merkl", "merkl_alert").Inc()
+		names := make([]string, len(opps))
+		for i, o := range opps {
+			names[i] = o.Name
+		}
+		e.logNotification(chatID, "merkl", "general_merkl_alert",
+			fmt.Sprintf("%d new opportunities: %s", len(opps), strings.Join(names, ", ")))
 	}
 }
 
@@ -545,6 +553,8 @@ func (e *Engine) sendMetricAlertToUser(chatID int64, src Source, metric string, 
 		e.logger.Error("send alert failed", "chat_id", chatID, "error", err)
 	} else {
 		metrics.AlertsSentTotal.WithLabelValues(src.Name(), "metric_alert").Inc()
+		e.logNotification(chatID, "metric", src.Name()+"_metric_alert",
+			fmt.Sprintf("%s %s %.1f%% in %dm (prev: %s, curr: %s)", metric, direction, changePct*100, windowMin, formatNum(prevVal), formatNum(currVal)))
 	}
 }
 
@@ -576,6 +586,8 @@ func (e *Engine) sendValueAlert(chatID int64, src Source, metric string, currVal
 		e.logger.Error("send alert failed", "chat_id", chatID, "error", err)
 	} else {
 		metrics.AlertsSentTotal.WithLabelValues(src.Name(), "value_alert").Inc()
+		e.logNotification(chatID, "value", src.Name()+"_metric_alert",
+			fmt.Sprintf("%s %s %s %.0f (current: %.0f)", metric, direction, dirLabel, thresholdVal, currVal))
 	}
 }
 
@@ -613,6 +625,8 @@ func (e *Engine) sendDueReports(ctx context.Context, hour int) {
 				continue
 			}
 			metrics.AlertsSentTotal.WithLabelValues(name, "daily_report").Inc()
+			e.logNotification(chatID, "daily_report", name+"_daily_report",
+				fmt.Sprintf("Daily %s report (hour %d UTC+8)", name, hour))
 			e.dedup.Record(ctx, dedupKey)
 			sent++
 		}
@@ -667,4 +681,14 @@ func stringToUpper(s string) string {
 		}
 	}
 	return string(b)
+}
+
+// logNotification persists a notification record for debugging and audit trail.
+func (e *Engine) logNotification(chatID int64, alertType, eventName, summary string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := e.store.LogNotification(ctx, chatID, alertType, eventName, summary); err != nil {
+		e.logger.Error("log notification failed", "chat_id", chatID, "alert_type", alertType, "error", err)
+	}
+	e.logger.Info("notification sent", "chat_id", chatID, "alert_type", alertType, "event", eventName, "summary", summary)
 }
