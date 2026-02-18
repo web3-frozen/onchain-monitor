@@ -196,6 +196,16 @@ func (s *Store) Unsubscribe(ctx context.Context, subID int64) error {
 	return err
 }
 
+// GetSubscriptionChatID returns the chat_id for a subscription (for dedup cleanup).
+func (s *Store) GetSubscriptionChatID(ctx context.Context, subID int64) (int64, error) {
+	var chatID int64
+	err := s.pool.QueryRow(ctx, `
+		SELECT u.tg_chat_id FROM subscriptions s
+		JOIN telegram_users u ON u.id = s.tg_user_id
+		WHERE s.id = $1`, subID).Scan(&chatID)
+	return chatID, err
+}
+
 func (s *Store) GetSubscriberChatIDs(ctx context.Context, eventName string) ([]int64, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT u.tg_chat_id

@@ -104,7 +104,7 @@ func main() {
 		r.Get("/subscriptions", handler.ListSubscriptions(db))
 		r.Post("/subscriptions", handler.Subscribe(db))
 		r.Put("/subscriptions/{id}", handler.UpdateSubscription(db))
-		r.Delete("/subscriptions/{id}", handler.Unsubscribe(db))
+		r.Delete("/subscriptions/{id}", handler.Unsubscribe(db, dd))
 		r.Get("/stats", handler.Stats(engine))
 		r.Get("/stats/meta", handler.StatsMetadata(engine))
 	})

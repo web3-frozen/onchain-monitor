@@ -2,10 +2,12 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/web3-frozen/onchain-monitor/internal/dedup"
 	"github.com/web3-frozen/onchain-monitor/internal/store"
 )
 
@@ -144,7 +146,7 @@ func UpdateSubscription(s *store.Store) http.HandlerFunc {
 	}
 }
 
-func Unsubscribe(s *store.Store) http.HandlerFunc {
+func Unsubscribe(s *store.Store, d *dedup.Deduplicator) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		idStr := chi.URLParam(r, "id")
 		id, err := strconv.ParseInt(idStr, 10, 64)
@@ -153,9 +155,18 @@ func Unsubscribe(s *store.Store) http.HandlerFunc {
 			return
 		}
 
+		// Get chat_id before deleting so we can clear dedup keys
+		chatID, _ := s.GetSubscriptionChatID(r.Context(), id)
+
 		if err := s.Unsubscribe(r.Context(), id); err != nil {
 			http.Error(w, `{"error":"failed to unsubscribe"}`, http.StatusInternalServerError)
 			return
+		}
+
+		// Clear all dedup keys for this user so re-subscribing starts fresh
+		if chatID != 0 && d != nil {
+			d.ClearByPattern(r.Context(), fmt.Sprintf("*%d:*", chatID))
+			d.ClearByPattern(r.Context(), fmt.Sprintf("merkl:%d:*", chatID))
 		}
 
 		w.WriteHeader(http.StatusNoContent)

@@ -51,3 +51,11 @@ func (d *Deduplicator) Record(ctx context.Context, key string) {
 func (d *Deduplicator) Clear(ctx context.Context, key string) {
 	d.rdb.Del(ctx, key) //nolint:errcheck
 }
+
+// ClearByPattern removes all dedup keys matching a glob pattern (e.g., "*:12345:*").
+func (d *Deduplicator) ClearByPattern(ctx context.Context, pattern string) {
+	iter := d.rdb.Scan(ctx, 0, pattern, 100).Iterator()
+	for iter.Next(ctx) {
+		d.rdb.Del(ctx, iter.Val()) //nolint:errcheck
+	}
+}
