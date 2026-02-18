@@ -17,10 +17,12 @@ const merklAPI = "https://api.merkl.xyz/v4/opportunities"
 type MerklOpportunity struct {
 	ID         string  `json:"id"`
 	Name       string  `json:"name"`
+	Type       string  `json:"type"`
 	Action     string  `json:"action"`
 	TVL        float64 `json:"tvl"`
 	APR        float64 `json:"apr"`
 	Status     string  `json:"status"`
+	Identifier string  `json:"identifier"`
 	DepositURL string  `json:"depositUrl"`
 	Chain      struct {
 		Name string `json:"name"`
@@ -32,6 +34,12 @@ type MerklOpportunity struct {
 		Symbol string  `json:"symbol"`
 		Price  float64 `json:"price"`
 	} `json:"tokens"`
+}
+
+// MerklURL returns the direct link to this opportunity on app.merkl.xyz.
+func (o *MerklOpportunity) MerklURL() string {
+	chain := strings.ToLower(strings.ReplaceAll(o.Chain.Name, " ", "-"))
+	return fmt.Sprintf("https://app.merkl.xyz/opportunities/%s/%s/%s", chain, o.Type, o.Identifier)
 }
 
 // IsStablecoin returns true if all tokens in the opportunity are stablecoins.
@@ -123,6 +131,7 @@ func (m *Merkl) GetFilteredOpportunities(minAPR, minTVL float64, action, stableF
 			ChainName:  o.Chain.Name,
 			Protocol:   o.ProtocolName(),
 			DepositURL: o.DepositURL,
+			MerklURL:   o.MerklURL(),
 			Stablecoin: isStable,
 		})
 	}

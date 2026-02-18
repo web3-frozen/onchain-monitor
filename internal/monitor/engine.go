@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -368,6 +369,7 @@ type MerklOpp struct {
 	ChainName  string
 	Protocol   string
 	DepositURL string
+	MerklURL   string
 	Stablecoin bool
 }
 
@@ -412,41 +414,78 @@ func (e *Engine) checkMerklAlerts(ctx context.Context) {
 
 		opps := getter.GetFilteredOpportunities(minAPR, minTVL, action, stableFilter)
 
+		// Collect new (unseen) opportunities
+		var newOpps []MerklOpp
 		for _, opp := range opps {
 			alertKey := fmt.Sprintf("merkl:%d:%s", sub.ChatID, opp.ID)
 			if _, seen := e.lastAlerted[alertKey]; seen {
 				continue
 			}
-			e.sendMerklAlert(sub.ChatID, merklSrc, opp)
+			newOpps = append(newOpps, opp)
+		}
+
+		if len(newOpps) == 0 {
+			continue
+		}
+
+		// Send as a single grouped message
+		e.sendMerklGroupedAlert(sub.ChatID, newOpps)
+
+		// Mark all as alerted
+		for _, opp := range newOpps {
+			alertKey := fmt.Sprintf("merkl:%d:%s", sub.ChatID, opp.ID)
 			e.lastAlerted[alertKey] = time.Now()
 		}
 	}
 }
 
-func (e *Engine) sendMerklAlert(chatID int64, src Source, opp MerklOpp) {
-	stable := ""
-	if opp.Stablecoin {
-		stable = " 🟢 Stablecoin"
+func (e *Engine) sendMerklGroupedAlert(chatID int64, opps []MerklOpp) {
+	// Sort opportunities by chain order: general → hyperliquid → monad, then alphabetically
+	chainOrder := map[string]int{
+		"ethereum": 0, "base": 1, "arbitrum": 2, "optimism": 3,
+		"hyperevm": 10, "hyperevmmainnet": 10,
+		"monad": 20, "monadtestnet": 21,
 	}
-	msg := fmt.Sprintf("💰 NEW YIELD OPPORTUNITY%s\n\n"+
-		"%s\n"+
-		"APR: %.1f%%\n"+
-		"TVL: $%s\n"+
-		"Chain: %s | Action: %s | Protocol: %s\n",
-		stable,
-		opp.Name,
-		opp.APR,
-		formatMerklTVL(opp.TVL),
-		opp.ChainName,
-		opp.Action,
-		opp.Protocol)
-	if opp.DepositURL != "" {
-		msg += fmt.Sprintf("\n🔗 %s", opp.DepositURL)
+	sort.SliceStable(opps, func(i, j int) bool {
+		ci := strings.ToLower(strings.ReplaceAll(opps[i].ChainName, " ", ""))
+		cj := strings.ToLower(strings.ReplaceAll(opps[j].ChainName, " ", ""))
+		oi, oki := chainOrder[ci]
+		oj, okj := chainOrder[cj]
+		if !oki {
+			oi = 50
+		}
+		if !okj {
+			oj = 50
+		}
+		if oi != oj {
+			return oi < oj
+		}
+		return opps[i].APR > opps[j].APR
+	})
+
+	var b strings.Builder
+
+	if len(opps) == 1 {
+		b.WriteString("💰 New Yield Opportunity\n\n")
 	} else {
-		msg += fmt.Sprintf("\n🔗 %s", src.URL())
+		b.WriteString(fmt.Sprintf("💰 %d New Yield Opportunities\n\n", len(opps)))
 	}
 
-	if err := e.alertFn(chatID, msg); err != nil {
+	for i, opp := range opps {
+		stable := ""
+		if opp.Stablecoin {
+			stable = " 🟢"
+		}
+		b.WriteString(fmt.Sprintf("%d. %s%s\n", i+1, opp.Name, stable))
+		b.WriteString(fmt.Sprintf("   APR: %.1f%% | TVL: $%s\n", opp.APR, formatMerklTVL(opp.TVL)))
+		b.WriteString(fmt.Sprintf("   %s · %s · %s\n", opp.ChainName, opp.Action, opp.Protocol))
+		b.WriteString(fmt.Sprintf("   🔗 %s\n", opp.MerklURL))
+		if i < len(opps)-1 {
+			b.WriteString("\n")
+		}
+	}
+
+	if err := e.alertFn(chatID, b.String()); err != nil {
 		metrics.AlertsFailedTotal.WithLabelValues("merkl", "merkl_alert").Inc()
 		e.logger.Error("send merkl alert failed", "chat_id", chatID, "error", err)
 	} else {
