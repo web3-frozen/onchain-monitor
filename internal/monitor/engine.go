@@ -250,28 +250,48 @@ func (e *Engine) checkMaxpainAlerts(ctx context.Context) {
 		return
 	}
 
+	// Type-assert to access interval-aware methods
+	type intervalScraper interface {
+		GetEntry(symbol, interval string) (sources.MaxPainEntry, bool)
+		ScrapeIntervals(intervals []string) error
+	}
+	mp, ok := maxpainSrc.(intervalScraper)
+	if !ok {
+		return
+	}
+
 	subscribers, err := e.store.GetSubscribersWithThresholds(ctx, "general_maxpain_alert")
 	if err != nil || len(subscribers) == 0 {
 		return
 	}
 
-	e.mu.RLock()
-	snap := e.snapHistory["maxpain"]
-	e.mu.RUnlock()
-	if len(snap) == 0 {
-		return
+	// Collect unique intervals needed and scrape them in one Chrome session
+	needed := make(map[string]bool)
+	for _, sub := range subscribers {
+		iv := sources.IntervalFromMinutes(sub.WindowMinutes)
+		if iv != "24h" { // 24h already scraped in FetchSnapshot
+			needed[iv] = true
+		}
 	}
-	latest := snap[len(snap)-1]
+	if len(needed) > 0 {
+		extras := make([]string, 0, len(needed))
+		for iv := range needed {
+			extras = append(extras, iv)
+		}
+		if err := mp.ScrapeIntervals(extras); err != nil {
+			e.logger.Warn("scrape maxpain intervals failed", "error", err)
+		}
+	}
 
 	for _, sub := range subscribers {
 		coin := strings.ToUpper(sub.Coin)
 		if coin == "" {
 			continue
 		}
+		interval := sources.IntervalFromMinutes(sub.WindowMinutes)
 
-		priceKey := coin + "_price"
-		price, ok := latest.Metrics[priceKey]
-		if !ok || price <= 0 {
+		entry, ok := mp.GetEntry(coin, interval)
+		if !ok || entry.Price <= 0 {
 			continue
 		}
 
@@ -279,9 +299,9 @@ func (e *Engine) checkMaxpainAlerts(ctx context.Context) {
 		side := strings.ToLower(sub.Direction)
 		switch side {
 		case "long":
-			maxpainPrice = latest.Metrics[coin+"_long_maxpain"]
+			maxpainPrice = entry.MaxLongLiquidationPrice
 		case "short":
-			maxpainPrice = latest.Metrics[coin+"_short_maxpain"]
+			maxpainPrice = entry.MaxShortLiquidationPrice
 		default:
 			continue
 		}
@@ -290,7 +310,7 @@ func (e *Engine) checkMaxpainAlerts(ctx context.Context) {
 		}
 
 		// Calculate distance percentage from current price to maxpain
-		dist := math.Abs(price-maxpainPrice) / price * 100
+		dist := math.Abs(entry.Price-maxpainPrice) / entry.Price * 100
 
 		// Alert when price is within threshold_value% of maxpain (default 1%)
 		threshold := sub.ThresholdValue
@@ -299,34 +319,36 @@ func (e *Engine) checkMaxpainAlerts(ctx context.Context) {
 		}
 
 		if dist <= threshold {
-			alertKey := fmt.Sprintf("maxpain:%d:%s:%s", sub.ChatID, coin, side)
+			alertKey := fmt.Sprintf("maxpain:%d:%s:%s:%s", sub.ChatID, coin, side, interval)
 			if lastTime, ok := e.lastAlerted[alertKey]; ok {
 				if time.Since(lastTime) < 60*time.Minute {
 					metrics.AlertsDeduplicatedTotal.WithLabelValues("maxpain", "maxpain_alert").Inc()
 					continue
 				}
 			}
-			e.sendMaxpainAlert(sub.ChatID, maxpainSrc, coin, side, price, maxpainPrice, dist)
+			e.sendMaxpainAlert(sub.ChatID, maxpainSrc, coin, side, interval, entry.Price, maxpainPrice, dist)
 			e.lastAlerted[alertKey] = time.Now()
 		}
 	}
 }
 
-func (e *Engine) sendMaxpainAlert(chatID int64, src Source, coin, side string, price, maxpainPrice, dist float64) {
+func (e *Engine) sendMaxpainAlert(chatID int64, src Source, coin, side, interval string, price, maxpainPrice, dist float64) {
 	sideLabel := "LONG"
 	if side == "short" {
 		sideLabel = "SHORT"
 	}
-	msg := fmt.Sprintf("🚨 %s %s MAX PAIN ALERT\n\n"+
+	msg := fmt.Sprintf("🚨 %s %s MAX PAIN ALERT (%s)\n\n"+
 		"%s price ($%s) is within %.1f%% of %s max pain ($%s)!\n\n"+
 		"Current Price: $%s\n"+
-		"%s Max Pain:   $%s\n\n"+
-		"🔗 %s",
-		coin, sideLabel,
+		"%s Max Pain:   $%s\n"+
+		"Interval:      %s\n\n"+
+		"🔗 %s?type=%s",
+		coin, sideLabel, interval,
 		coin, formatNum(price), dist, sideLabel, formatNum(maxpainPrice),
 		formatNum(price),
 		sideLabel, formatNum(maxpainPrice),
-		src.URL())
+		interval,
+		src.URL(), interval)
 
 	if err := e.alertFn(chatID, msg); err != nil {
 		metrics.AlertsFailedTotal.WithLabelValues("maxpain", "maxpain_alert").Inc()
