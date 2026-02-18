@@ -331,7 +331,7 @@ func (s *Store) InsertLiquidationEvents(ctx context.Context, events []Liquidatio
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op
 	for _, e := range events {
 		_, err := tx.Exec(ctx, `
 			INSERT INTO liquidation_events (symbol, side, price, quantity, usd_value, exchange, event_time)

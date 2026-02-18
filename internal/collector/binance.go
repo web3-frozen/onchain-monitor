@@ -102,7 +102,7 @@ func (c *Collector) connectAndRead(ctx context.Context, wsURL string) error {
 	if err != nil {
 		return fmt.Errorf("ws dial: %w", err)
 	}
-	defer conn.CloseNow()
+	defer conn.CloseNow() //nolint:errcheck // best-effort close on exit
 
 	c.logger.Info("binance ws connected")
 
@@ -213,6 +213,6 @@ func (c *Collector) handleMessage(data []byte) {
 
 func parseFloat(s string) float64 {
 	var f float64
-	fmt.Sscanf(s, "%f", &f)
+	_, _ = fmt.Sscanf(s, "%f", &f)
 	return f
 }
