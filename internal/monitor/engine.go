@@ -540,10 +540,10 @@ func (e *Engine) sendMetricAlertToUser(chatID int64, src Source, metric string, 
 
 func (e *Engine) sendValueAlert(chatID int64, src Source, metric string, currVal, thresholdVal float64, direction string) {
 	dirLabel := "ABOVE"
-	cmp := ">"
+	cmp := "&gt;"
 	if direction == "lower" {
 		dirLabel = "BELOW"
-		cmp = "<"
+		cmp = "&lt;"
 	}
 	msg := fmt.Sprintf("🚨 %s %s %s THRESHOLD\n\n"+
 		"%s is now %s %s %.0f!\n"+
