@@ -91,9 +91,6 @@ func (e *Engine) Run(ctx context.Context) {
 	pollTicker := time.NewTicker(pollInterval)
 	defer pollTicker.Stop()
 
-	// Check daily reports every minute alongside polls
-	var lastReportHour int = -1
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -104,11 +101,7 @@ func (e *Engine) Run(ctx context.Context) {
 			// Check if any subscribers are due their daily report this hour
 			utc8 := time.FixedZone("UTC+8", 8*60*60)
 			now := time.Now().In(utc8)
-			currentHour := now.Hour()
-			if currentHour != lastReportHour {
-				lastReportHour = currentHour
-				e.sendDueReports(ctx, currentHour)
-			}
+			e.sendDueReports(ctx, now.Hour())
 		}
 	}
 }
@@ -269,6 +262,9 @@ func (e *Engine) sendValueAlert(chatID int64, src Source, metric string, currVal
 }
 
 func (e *Engine) sendDueReports(ctx context.Context, hour int) {
+	utc8 := time.FixedZone("UTC+8", 8*60*60)
+	today := time.Now().In(utc8).Format("2006-01-02")
+
 	for name, src := range e.sources {
 		eventName := name + "_daily_report"
 		chatIDs, err := e.store.GetDailyReportSubscribers(ctx, eventName, hour)
@@ -286,8 +282,22 @@ func (e *Engine) sendDueReports(ctx context.Context, hour int) {
 			continue
 		}
 
-		e.broadcast(chatIDs, report)
-		e.logger.Info("sent daily reports", "source", name, "hour", hour, "recipients", len(chatIDs))
+		sent := 0
+		for _, chatID := range chatIDs {
+			dedupKey := fmt.Sprintf("report:%s:%d:%s", today, chatID, name)
+			if _, already := e.lastAlerted[dedupKey]; already {
+				continue
+			}
+			if err := e.alertFn(chatID, report); err != nil {
+				e.logger.Error("send alert failed", "chat_id", chatID, "error", err)
+				continue
+			}
+			e.lastAlerted[dedupKey] = time.Now()
+			sent++
+		}
+		if sent > 0 {
+			e.logger.Info("sent daily reports", "source", name, "hour", hour, "recipients", sent)
+		}
 	}
 }
 
