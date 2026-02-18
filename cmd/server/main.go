@@ -59,6 +59,7 @@ func main() {
 	engine.Register(sources.NewNeverland())
 	engine.Register(sources.NewFearGreed())
 	engine.Register(sources.NewMaxPain(logger))
+	engine.Register(sources.NewMerkl())
 
 	// Start background goroutines
 	go bot.Run(ctx)

@@ -59,7 +59,8 @@ INSERT INTO events (name, description, category) VALUES
     ('neverland_daily_report', 'Daily UTC+8 report — Neverland TVL, veDUST, DUST price, fees', 'neverland'),
     ('general_metric_alert', 'Alert when Fear & Greed Index', 'general'),
     ('general_daily_report', 'Daily UTC+8 report — Crypto Fear & Greed Index', 'general'),
-    ('general_maxpain_alert', 'Alert when price hits liquidation max pain', 'general')
+    ('general_maxpain_alert', 'Alert when price hits liquidation max pain', 'general'),
+    ('general_merkl_alert', 'Alert on new Merkl yield opportunities', 'general')
 ON CONFLICT (name) DO NOTHING;
 
 -- Update existing descriptions
@@ -70,6 +71,7 @@ UPDATE events SET description = 'Daily UTC+8 report — Neverland TVL, veDUST, D
 UPDATE events SET description = 'Alert when Fear & Greed Index' WHERE name = 'general_metric_alert';
 UPDATE events SET description = 'Daily UTC+8 report — Crypto Fear & Greed Index' WHERE name = 'general_daily_report';
 UPDATE events SET description = 'Alert when price hits liquidation max pain' WHERE name = 'general_maxpain_alert';
+UPDATE events SET description = 'Alert on new Merkl yield opportunities' WHERE name = 'general_merkl_alert';
 `
 
 func (s *Store) Migrate(ctx context.Context) error {

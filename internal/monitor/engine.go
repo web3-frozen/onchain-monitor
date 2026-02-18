@@ -238,6 +238,9 @@ func (e *Engine) pollAll(ctx context.Context) {
 
 	// Check maxpain alerts separately (uses cross-source data)
 	e.checkMaxpainAlerts(ctx)
+
+	// Check merkl yield opportunity alerts
+	e.checkMerklAlerts(ctx)
 }
 
 // checkMaxpainAlerts checks if current prices have crossed liquidation max pain levels.
@@ -331,6 +334,112 @@ func (e *Engine) sendMaxpainAlert(chatID int64, src Source, coin, side string, p
 	} else {
 		metrics.AlertsSentTotal.WithLabelValues("maxpain", "maxpain_alert").Inc()
 	}
+}
+
+// MerklOpp holds opportunity data for Merkl yield alerts.
+type MerklOpp struct {
+	ID         string
+	Name       string
+	Action     string
+	TVL        float64
+	APR        float64
+	ChainName  string
+	Protocol   string
+	DepositURL string
+	Stablecoin bool
+}
+
+// checkMerklAlerts checks for new yield opportunities matching subscriber criteria.
+func (e *Engine) checkMerklAlerts(ctx context.Context) {
+	merklSrc, ok := e.sources["merkl"]
+	if !ok {
+		return
+	}
+
+	subscribers, err := e.store.GetSubscribersWithThresholds(ctx, "general_merkl_alert")
+	if err != nil || len(subscribers) == 0 {
+		return
+	}
+
+	type oppGetter interface {
+		GetFilteredOpportunities(minAPR, minTVL float64, action, stableFilter string) []MerklOpp
+	}
+
+	getter, ok := merklSrc.(oppGetter)
+	if !ok {
+		return
+	}
+
+	for _, sub := range subscribers {
+		minAPR := sub.ThresholdValue
+		if minAPR <= 0 {
+			minAPR = 10
+		}
+		minTVL := sub.ThresholdPct * 1_000_000
+		if minTVL <= 0 {
+			minTVL = 1_000_000
+		}
+		action := strings.ToUpper(sub.Coin)
+		if action == "" {
+			action = "ALL"
+		}
+		stableFilter := sub.Direction
+		if stableFilter == "" {
+			stableFilter = "any"
+		}
+
+		opps := getter.GetFilteredOpportunities(minAPR, minTVL, action, stableFilter)
+
+		for _, opp := range opps {
+			alertKey := fmt.Sprintf("merkl:%d:%s", sub.ChatID, opp.ID)
+			if _, seen := e.lastAlerted[alertKey]; seen {
+				continue
+			}
+			e.sendMerklAlert(sub.ChatID, merklSrc, opp)
+			e.lastAlerted[alertKey] = time.Now()
+		}
+	}
+}
+
+func (e *Engine) sendMerklAlert(chatID int64, src Source, opp MerklOpp) {
+	stable := ""
+	if opp.Stablecoin {
+		stable = " 🟢 Stablecoin"
+	}
+	msg := fmt.Sprintf("💰 NEW YIELD OPPORTUNITY%s\n\n"+
+		"%s\n"+
+		"APR: %.1f%%\n"+
+		"TVL: $%s\n"+
+		"Chain: %s | Action: %s | Protocol: %s\n",
+		stable,
+		opp.Name,
+		opp.APR,
+		formatMerklTVL(opp.TVL),
+		opp.ChainName,
+		opp.Action,
+		opp.Protocol)
+	if opp.DepositURL != "" {
+		msg += fmt.Sprintf("\n🔗 %s", opp.DepositURL)
+	} else {
+		msg += fmt.Sprintf("\n🔗 %s", src.URL())
+	}
+
+	if err := e.alertFn(chatID, msg); err != nil {
+		metrics.AlertsFailedTotal.WithLabelValues("merkl", "merkl_alert").Inc()
+		e.logger.Error("send merkl alert failed", "chat_id", chatID, "error", err)
+	} else {
+		metrics.AlertsSentTotal.WithLabelValues("merkl", "merkl_alert").Inc()
+	}
+}
+
+func formatMerklTVL(v float64) string {
+	if v >= 1_000_000 {
+		return fmt.Sprintf("%.1fM", v/1_000_000)
+	}
+	if v >= 1_000 {
+		return fmt.Sprintf("%.0fK", v/1_000)
+	}
+	return fmt.Sprintf("%.0f", v)
 }
 
 func (e *Engine) sendMetricAlertToUser(chatID int64, src Source, metric string, prevVal, currVal, changePct float64, windowMin int, direction string) {
