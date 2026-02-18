@@ -173,6 +173,8 @@ func (m *MaxPain) scrapeIntervals(intervals []string) (map[string][]monitor.MaxP
 		chromedp.Flag("disable-dev-shm-usage", true),
 		chromedp.Flag("disable-crash-reporter", true),
 		chromedp.Flag("crash-dumps-dir", "/tmp"),
+		chromedp.Flag("disable-blink-features", "AutomationControlled"),
+		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"),
 		chromedp.UserDataDir("/tmp/chromedp-profile"),
 	)
 
@@ -182,16 +184,33 @@ func (m *MaxPain) scrapeIntervals(intervals []string) (map[string][]monitor.MaxP
 	ctx, cancel := chromedp.NewContext(allocCtx)
 	defer cancel()
 
-	ctx, cancel = context.WithTimeout(ctx, time.Duration(30+20*len(intervals))*time.Second)
+	ctx, cancel = context.WithTimeout(ctx, time.Duration(60+20*len(intervals))*time.Second)
 	defer cancel()
 
 	// Navigate once; default view is 24h
 	if err := chromedp.Run(ctx,
 		chromedp.Navigate(maxpainURL),
-		chromedp.WaitVisible(`.ant-table-tbody tr.ant-table-row`, chromedp.ByQuery),
-		chromedp.Sleep(3*time.Second),
+		chromedp.Sleep(5*time.Second),
 	); err != nil {
 		return nil, fmt.Errorf("chromedp navigate: %w", err)
+	}
+
+	// Poll until table data rows appear (up to 20s)
+	var rowCount int
+	for i := 0; i < 10; i++ {
+		if err := chromedp.Run(ctx, chromedp.Evaluate(`document.querySelectorAll('table tbody tr td').length`, &rowCount)); err != nil {
+			return nil, fmt.Errorf("chromedp poll: %w", err)
+		}
+		if rowCount > 0 {
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+	if rowCount == 0 {
+		// Capture page state for debugging
+		var pageURL string
+		_ = chromedp.Run(ctx, chromedp.Evaluate(`document.location.href`, &pageURL))
+		m.logger.Warn("maxpain no data rows loaded", "page_url", pageURL, "td_count", rowCount)
 	}
 
 	result := make(map[string][]monitor.MaxPainEntry, len(intervals))
