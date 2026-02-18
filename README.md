@@ -1,6 +1,6 @@
 # Onchain Monitor — Backend
 
-A generic on-chain metrics monitoring API built with Go. It polls multiple DeFi data sources, detects anomalies (≥10% drops), sends Telegram alerts, and delivers daily reports.
+A Go-based on-chain metrics monitoring API. Polls multiple DeFi data sources, collects real-time liquidation data from Binance, discovers yield opportunities via Merkl, sends configurable Telegram alerts, and delivers daily reports.
 
 ## Architecture
 
@@ -11,20 +11,30 @@ A generic on-chain metrics monitoring API built with Go. It polls multiple DeFi 
 │              │     │  detect) │     │  Reports   │
 └─────────────┘     └────┬─────┘     └────────────┘
                          │
-                    ┌────▼─────┐     ┌────────────┐
-                    │ PostgreSQL│◀───│  REST API  │
-                    │          │     │  (chi)     │
-                    └──────────┘     └────────────┘
+┌─────────────┐     ┌────▼─────┐     ┌────────────┐
+│  Binance WS │────▶│ PostgreSQL│◀───│  REST API  │
+│  (liquidations)   │          │     │  (chi)     │
+└─────────────┘     └────┬─────┘     └────────────┘
+                         │
+                    ┌────▼─────┐
+                    │  Redis   │
+                    │  (dedup) │
+                    └──────────┘
 ```
 
 ## Data Sources
 
-| Source | Metrics | APIs |
-|--------|---------|------|
-| **Altura** | TVL, AVLT Price, APR | Altura GraphQL |
-| **Neverland** | TVL, veDUST TVL, DUST Price, Fees (24h/7d/30d) | DefiLlama, DexScreener |
+| Source | Metrics | Data Provider |
+|--------|---------|---------------|
+| **Altura** | TVL, AVLT Price, APR | Altura GraphQL API |
+| **Neverland** | TVL, veDUST TVL, DUST Price, Fees (24h/7d/30d) | DefiLlama + DexScreener APIs |
+| **Fear & Greed** | Fear & Greed Index (0–100) | alternative.me API |
+| **Max Pain** | BTC/ETH Long & Short Max Pain prices | Self-built from Binance Futures WebSocket liquidations |
+| **Merkl** | Yield opportunities (APR, TVL, action) | Merkl v4 API (api.merkl.xyz) |
 
-Adding a new source: implement the `Source` interface in `internal/monitor/sources/` and register it in `main.go`.
+### Adding a New Source
+
+Implement the `Source` interface in `internal/monitor/sources/` and register it in `main.go`:
 
 ```go
 type Source interface {
@@ -35,24 +45,49 @@ type Source interface {
 }
 ```
 
+## Alert Types
+
+| Type | Description | Dedup Strategy |
+|------|-------------|----------------|
+| **Value alerts** | Fires when a metric crosses an absolute threshold (above/below) | Permanent until condition resets |
+| **Metric alerts** | Fires on percentage change (increase/drop) over a configurable time window | Permanent until condition resets |
+| **Max Pain alerts** | Fires when current price is near liquidation max pain level | Permanent until condition resets |
+| **Merkl alerts** | Fires on new yield opportunities matching user's APR/TVL/action/stablecoin criteria | Permanent per opportunity per user |
+| **Daily reports** | Scheduled summary sent at configured hour (UTC+8) | Keyed by date (naturally unique) |
+
+All alerts use **fire-once semantics** — no TTL. Dedup keys are stored permanently in Redis and cleared only when the alert condition resets or the user unsubscribes.
+
 ## API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/healthz` | Liveness probe |
 | `GET` | `/readyz` | Readiness probe (checks DB) |
+| `GET` | `/metrics` | Prometheus metrics endpoint |
 | `GET` | `/api/events` | List available monitoring events |
 | `GET` | `/api/stats` | Latest snapshots for all sources (or `?source=altura`) |
 | `POST` | `/api/link` | Link a Telegram account via OTP code |
 | `GET` | `/api/subscriptions` | List user's event subscriptions |
 | `POST` | `/api/subscriptions` | Subscribe to an event |
-| `DELETE` | `/api/subscriptions/{id}` | Unsubscribe from an event |
+| `DELETE` | `/api/subscriptions/{id}` | Unsubscribe (also clears dedup keys) |
 
-## Monitoring Behaviour
+## Monitoring & Observability
 
-- **Polling**: every 60 seconds per source
-- **Drop alerts**: triggered when any metric drops ≥10% from the previous snapshot
-- **Daily reports**: sent at 08:00 HKT to all subscribers
+### Prometheus Metrics
+
+- **HTTP**: `http_requests_total`, `http_request_duration_seconds`, `http_requests_in_flight`
+- **Polling**: `monitor_poll_total`, `monitor_poll_duration_seconds`, `monitor_poll_last_success_timestamp`
+- **Alerts**: `monitor_alerts_sent_total`, `monitor_alerts_failed_total`, `monitor_alerts_deduplicated_total`
+- **Business**: `monitor_metric_value` (TVL, prices, APR, etc.), `monitor_subscriptions_active`
+
+### Infrastructure Alerts (PrometheusRules → AlertManager → Telegram)
+
+- `OnchainMonitorDown` — API unreachable for >2 min
+- `OnchainMonitorHighErrorRate` — HTTP 5xx rate >5%
+- `OnchainMonitorPollFailure` — Poll error rate >50% for any source
+- `OnchainMonitorPollStale` — No successful poll for >3 min
+- `OnchainMonitorHighLatency` — p95 latency >2s
+- `OnchainMonitorDBStorageHigh` — PostgreSQL PVC usage >80%
 
 ## Configuration
 
@@ -60,6 +95,7 @@ type Source interface {
 |----------|----------|---------|-------------|
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string |
 | `TELEGRAM_BOT_TOKEN` | Yes | — | Telegram Bot API token (or via Infisical) |
+| `REDIS_URL` | Yes | — | Redis connection string (for alert dedup) |
 | `PORT` | No | `8080` | HTTP listen port |
 | `FRONTEND_ORIGIN` | No | `*` | CORS allowed origin |
 | `INFISICAL_CLIENT_ID` | No | — | Infisical Universal Auth client ID |
@@ -73,10 +109,11 @@ When Infisical credentials are provided, `TELEGRAM_BOT_TOKEN` is fetched from In
 ## Local Development
 
 ```bash
-# Prerequisites: Go 1.23+, PostgreSQL
+# Prerequisites: Go 1.23+, PostgreSQL, Redis
 
 export DATABASE_URL="postgres://user:pass@localhost:5432/onchain_monitor?sslmode=disable"
 export TELEGRAM_BOT_TOKEN="your-bot-token"
+export REDIS_URL="redis://localhost:6379"
 
 go run ./cmd/server
 ```
@@ -88,12 +125,13 @@ docker build -t onchain-monitor .
 docker run -p 8080:8080 \
   -e DATABASE_URL="..." \
   -e TELEGRAM_BOT_TOKEN="..." \
+  -e REDIS_URL="..." \
   onchain-monitor
 ```
 
 ## Deployment
 
-The app is deployed to Kubernetes via ArgoCD GitOps. CI/CD is handled by GitHub Actions:
+Deployed to Kubernetes via ArgoCD GitOps. CI/CD handled by GitHub Actions:
 
 1. Push to `main` triggers lint, test, build, and Docker image push to GHCR
 2. Image tag is updated in `homelab-apps` kustomization
@@ -102,19 +140,42 @@ The app is deployed to Kubernetes via ArgoCD GitOps. CI/CD is handled by GitHub 
 ## Project Structure
 
 ```
-cmd/server/main.go          # Entry point
+cmd/server/main.go          # Entry point — wires sources, engine, handlers
 internal/
+  collector/
+    binance_ws.go           # Binance Futures WebSocket client (forceOrder streams)
+    collector.go            # Orchestrator — manages WS connections, writes to Postgres
   config/                   # Environment + Infisical config loading
+  dedup/
+    dedup.go                # Redis-backed alert deduplication (permanent, no TTL)
   handler/                  # HTTP handlers (events, stats, subscriptions, link)
-  middleware/               # CORS, logging, recovery
+  metrics/                  # Prometheus metrics registry
+  middleware/               # CORS, logging, recovery, metrics
   monitor/
-    engine.go               # Core polling loop, drop detection, daily reports
+    engine.go               # Core polling loop, alert evaluation, daily reports
     source.go               # Source interface + Snapshot model
     sources/
-      altura.go             # Altura data source
-      neverland.go          # Neverland data source
+      altura.go             # Altura data source (GraphQL)
+      neverland.go          # Neverland data source (DefiLlama + DexScreener)
+      feargreed.go          # Fear & Greed Index (alternative.me)
+      maxpain.go            # Max Pain from Binance liquidation data
+      merkl.go              # Merkl yield opportunities (API v4)
   store/                    # PostgreSQL store + migrations
   telegram/                 # Telegram bot (long-polling, OTP linking)
+scripts/
+  clear-dedup.sh            # Clear Redis dedup keys for a specific chat ID
+```
+
+## Scripts
+
+### Clear Alert Dedup Keys
+
+```bash
+# List keys for a chat ID (dry run)
+./scripts/clear-dedup.sh 123456789 --dry-run
+
+# Delete all dedup keys for a chat ID
+./scripts/clear-dedup.sh 123456789
 ```
 
 ## License
