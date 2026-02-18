@@ -44,6 +44,7 @@ func Subscribe(s *store.Store) http.HandlerFunc {
 		ThresholdPct  float64 `json:"threshold_pct"`
 		WindowMinutes int     `json:"window_minutes"`
 		Direction     string  `json:"direction"`
+		ReportHour    *int    `json:"report_hour"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -67,8 +68,12 @@ func Subscribe(s *store.Store) http.HandlerFunc {
 		if req.Direction != "drop" && req.Direction != "increase" {
 			req.Direction = "drop"
 		}
+		reportHour := 8
+		if req.ReportHour != nil && *req.ReportHour >= 0 && *req.ReportHour <= 23 {
+			reportHour = *req.ReportHour
+		}
 
-		sub, err := s.Subscribe(r.Context(), req.TgChatID, req.EventID, req.ThresholdPct, req.WindowMinutes, req.Direction)
+		sub, err := s.Subscribe(r.Context(), req.TgChatID, req.EventID, req.ThresholdPct, req.WindowMinutes, req.Direction, reportHour)
 		if err != nil {
 			http.Error(w, `{"error":"failed to subscribe"}`, http.StatusInternalServerError)
 			return
@@ -85,6 +90,7 @@ func UpdateSubscription(s *store.Store) http.HandlerFunc {
 		ThresholdPct  float64 `json:"threshold_pct"`
 		WindowMinutes int     `json:"window_minutes"`
 		Direction     string  `json:"direction"`
+		ReportHour    *int    `json:"report_hour"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -110,8 +116,12 @@ func UpdateSubscription(s *store.Store) http.HandlerFunc {
 		if req.Direction != "drop" && req.Direction != "increase" {
 			req.Direction = "drop"
 		}
+		reportHour := 8
+		if req.ReportHour != nil && *req.ReportHour >= 0 && *req.ReportHour <= 23 {
+			reportHour = *req.ReportHour
+		}
 
-		sub, err := s.UpdateSubscription(r.Context(), id, req.ThresholdPct, req.WindowMinutes, req.Direction)
+		sub, err := s.UpdateSubscription(r.Context(), id, req.ThresholdPct, req.WindowMinutes, req.Direction, reportHour)
 		if err != nil {
 			http.Error(w, `{"error":"failed to update subscription"}`, http.StatusInternalServerError)
 			return

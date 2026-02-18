@@ -91,8 +91,8 @@ func (e *Engine) Run(ctx context.Context) {
 	pollTicker := time.NewTicker(pollInterval)
 	defer pollTicker.Stop()
 
-	// Schedule daily report at 8am UTC+8
-	reportTimer := e.nextReportTimer()
+	// Check daily reports every minute alongside polls
+	var lastReportHour int = -1
 
 	for {
 		select {
@@ -100,9 +100,15 @@ func (e *Engine) Run(ctx context.Context) {
 			return
 		case <-pollTicker.C:
 			e.pollAll(ctx)
-		case <-reportTimer.C:
-			e.sendDailyReports(ctx)
-			reportTimer = e.nextReportTimer()
+
+			// Check if any subscribers are due their daily report this hour
+			utc8 := time.FixedZone("UTC+8", 8*60*60)
+			now := time.Now().In(utc8)
+			currentHour := now.Hour()
+			if currentHour != lastReportHour {
+				lastReportHour = currentHour
+				e.sendDueReports(ctx, currentHour)
+			}
 		}
 	}
 }
@@ -210,12 +216,12 @@ func (e *Engine) sendMetricAlertToUser(chatID int64, src Source, metric string, 
 	}
 }
 
-func (e *Engine) sendDailyReports(ctx context.Context) {
+func (e *Engine) sendDueReports(ctx context.Context, hour int) {
 	for name, src := range e.sources {
 		eventName := name + "_daily_report"
-		chatIDs, err := e.store.GetSubscriberChatIDs(ctx, eventName)
+		chatIDs, err := e.store.GetDailyReportSubscribers(ctx, eventName, hour)
 		if err != nil {
-			e.logger.Error("get subscribers failed", "event", eventName, "error", err)
+			e.logger.Error("get daily report subscribers failed", "event", eventName, "hour", hour, "error", err)
 			continue
 		}
 		if len(chatIDs) == 0 {
@@ -229,6 +235,7 @@ func (e *Engine) sendDailyReports(ctx context.Context) {
 		}
 
 		e.broadcast(chatIDs, report)
+		e.logger.Info("sent daily reports", "source", name, "hour", hour, "recipients", len(chatIDs))
 	}
 }
 
@@ -238,18 +245,6 @@ func (e *Engine) broadcast(chatIDs []int64, msg string) {
 			e.logger.Error("send alert failed", "chat_id", chatID, "error", err)
 		}
 	}
-}
-
-func (e *Engine) nextReportTimer() *time.Timer {
-	utc8 := time.FixedZone("UTC+8", 8*60*60)
-	now := time.Now().In(utc8)
-	next := time.Date(now.Year(), now.Month(), now.Day(), 8, 0, 0, 0, utc8)
-	if now.After(next) {
-		next = next.Add(24 * time.Hour)
-	}
-	duration := time.Until(next)
-	e.logger.Info("next daily report", "at", next.Format(time.RFC3339), "in", duration.Round(time.Minute))
-	return time.NewTimer(duration)
 }
 
 func formatNum(v float64) string {

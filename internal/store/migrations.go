@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     threshold_pct DOUBLE PRECISION NOT NULL DEFAULT 10,
     window_minutes INT NOT NULL DEFAULT 1,
     direction TEXT NOT NULL DEFAULT 'drop',
+    report_hour INT NOT NULL DEFAULT 8,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -36,6 +37,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS threshold_pct DOUBLE PRECISION NOT NULL DEFAULT 10;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS window_minutes INT NOT NULL DEFAULT 1;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS direction TEXT NOT NULL DEFAULT 'drop';
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS report_hour INT NOT NULL DEFAULT 8;
 
 -- Drop unique constraint to allow multiple subscriptions per event with different configs
 ALTER TABLE subscriptions DROP CONSTRAINT IF EXISTS subscriptions_tg_user_id_event_id_key;
@@ -49,16 +51,16 @@ UPDATE events SET name = 'neverland_metric_alert', description = 'Alert when Nev
 -- Seed events (idempotent)
 INSERT INTO events (name, description, category) VALUES
     ('altura_metric_alert', 'Alert when Altura metrics', 'altura'),
-    ('altura_daily_report', 'Daily 8am UTC+8 report — Altura TVL, AVLT price, APR', 'altura'),
+    ('altura_daily_report', 'Daily UTC+8 report — Altura TVL, AVLT price, APR', 'altura'),
     ('neverland_metric_alert', 'Alert when Neverland metrics', 'neverland'),
-    ('neverland_daily_report', 'Daily 8am UTC+8 report — Neverland TVL, veDUST, DUST price, fees', 'neverland')
+    ('neverland_daily_report', 'Daily UTC+8 report — Neverland TVL, veDUST, DUST price, fees', 'neverland')
 ON CONFLICT (name) DO NOTHING;
 
 -- Update existing descriptions
 UPDATE events SET description = 'Alert when Altura metrics' WHERE name = 'altura_metric_alert';
-UPDATE events SET description = 'Daily 8am UTC+8 report — Altura TVL, AVLT price, APR' WHERE name = 'altura_daily_report';
+UPDATE events SET description = 'Daily UTC+8 report — Altura TVL, AVLT price, APR' WHERE name = 'altura_daily_report';
 UPDATE events SET description = 'Alert when Neverland metrics' WHERE name = 'neverland_metric_alert';
-UPDATE events SET description = 'Daily 8am UTC+8 report — Neverland TVL, veDUST, DUST price, fees' WHERE name = 'neverland_daily_report';
+UPDATE events SET description = 'Daily UTC+8 report — Neverland TVL, veDUST, DUST price, fees' WHERE name = 'neverland_daily_report';
 `
 
 func (s *Store) Migrate(ctx context.Context) error {
