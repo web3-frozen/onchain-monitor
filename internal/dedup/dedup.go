@@ -46,3 +46,8 @@ func (d *Deduplicator) AlreadySent(ctx context.Context, key string) bool {
 func (d *Deduplicator) Record(ctx context.Context, key string, ttl time.Duration) {
 	d.rdb.Set(ctx, key, "1", ttl)
 }
+
+// Clear removes a dedup key so the alert can fire again when the condition resets.
+func (d *Deduplicator) Clear(ctx context.Context, key string) {
+	d.rdb.Del(ctx, key) //nolint:errcheck
+}

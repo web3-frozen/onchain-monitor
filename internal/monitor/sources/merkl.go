@@ -112,7 +112,7 @@ func (m *Merkl) GetFilteredOpportunities(minAPR, minTVL float64, action, stableF
 		if o.APR < minAPR || o.TVL < minTVL {
 			continue
 		}
-		if action != "ALL" && !strings.Contains(action, o.Action) {
+		if action != "ALL" && !strings.Contains(action, o.Action) && !strings.EqualFold(action, o.Action) {
 			continue
 		}
 		isStable := o.IsStablecoin()

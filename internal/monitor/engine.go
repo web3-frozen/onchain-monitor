@@ -182,6 +182,7 @@ func (e *Engine) pollAll(ctx context.Context) {
 			// Value-based alerts (higher/lower than threshold_value)
 			if sub.ThresholdValue > 0 && (sub.Direction == "higher" || sub.Direction == "lower") {
 				for metric, currVal := range snap.Metrics {
+					alertKey := fmt.Sprintf("%d:%s:%s:%s:%.0f", sub.ChatID, name, metric, sub.Direction, sub.ThresholdValue)
 					var triggered bool
 					if sub.Direction == "higher" && currVal > sub.ThresholdValue {
 						triggered = true
@@ -189,13 +190,15 @@ func (e *Engine) pollAll(ctx context.Context) {
 						triggered = true
 					}
 					if triggered {
-						alertKey := fmt.Sprintf("%d:%s:%s:%s:%.0f", sub.ChatID, name, metric, sub.Direction, sub.ThresholdValue)
 						if e.dedup.AlreadySent(ctx, alertKey) {
 							metrics.AlertsDeduplicatedTotal.WithLabelValues(name, "value_alert").Inc()
 							continue
 						}
 						e.sendValueAlert(sub.ChatID, src, metric, currVal, sub.ThresholdValue, sub.Direction)
-						e.dedup.Record(ctx, alertKey, 60*time.Minute)
+						e.dedup.Record(ctx, alertKey, 7*24*time.Hour)
+					} else {
+						// Condition no longer met — clear so alert can fire again next time
+						e.dedup.Clear(ctx, alertKey)
 					}
 				}
 				continue
@@ -229,6 +232,10 @@ func (e *Engine) pollAll(ctx context.Context) {
 					}
 					e.sendMetricAlertToUser(sub.ChatID, src, metric, prevVal, currVal, change, sub.WindowMinutes, sub.Direction)
 					e.dedup.Record(ctx, alertKey, time.Duration(sub.WindowMinutes)*time.Minute)
+				} else {
+					// Condition no longer met — clear so alert can fire again
+					alertKey := fmt.Sprintf("%d:%s:%s:%s", sub.ChatID, name, metric, sub.Direction)
+					e.dedup.Clear(ctx, alertKey)
 				}
 			}
 		}
@@ -323,7 +330,10 @@ func (e *Engine) checkMaxpainAlerts(ctx context.Context) {
 				continue
 			}
 			e.sendMaxpainAlert(sub.ChatID, maxpainSrc, coin, side, interval, entry.Price, maxpainPrice, dist)
-			e.dedup.Record(ctx, alertKey, 60*time.Minute)
+			e.dedup.Record(ctx, alertKey, 7*24*time.Hour)
+		} else {
+			alertKey := fmt.Sprintf("maxpain:%d:%s:%s:%s", sub.ChatID, coin, side, interval)
+			e.dedup.Clear(ctx, alertKey)
 		}
 	}
 }
@@ -426,10 +436,10 @@ func (e *Engine) checkMerklAlerts(ctx context.Context) {
 		// Send as a single grouped message
 		e.sendMerklGroupedAlert(sub.ChatID, newOpps)
 
-		// Mark all as alerted (24h TTL — opportunities rarely change ID)
+		// Mark all as alerted (7d TTL — each opportunity alerts only once)
 		for _, opp := range newOpps {
 			alertKey := fmt.Sprintf("merkl:%d:%s", sub.ChatID, opp.ID)
-			e.dedup.Record(ctx, alertKey, 24*time.Hour)
+			e.dedup.Record(ctx, alertKey, 7*24*time.Hour)
 		}
 	}
 }
