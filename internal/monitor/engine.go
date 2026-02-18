@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/web3-frozen/onchain-monitor/internal/metrics"
 	"github.com/web3-frozen/onchain-monitor/internal/store"
 )
 
@@ -87,6 +88,7 @@ func (e *Engine) GetSnapshot(source string) *Snapshot {
 func (e *Engine) Run(ctx context.Context) {
 	// Initial fetch
 	e.pollAll(ctx)
+	e.refreshBusinessGauges(ctx)
 
 	pollTicker := time.NewTicker(pollInterval)
 	defer pollTicker.Stop()
@@ -97,6 +99,7 @@ func (e *Engine) Run(ctx context.Context) {
 			return
 		case <-pollTicker.C:
 			e.pollAll(ctx)
+			e.refreshBusinessGauges(ctx)
 
 			// Check if any subscribers are due their daily report this hour
 			utc8 := time.FixedZone("UTC+8", 8*60*60)
@@ -106,13 +109,42 @@ func (e *Engine) Run(ctx context.Context) {
 	}
 }
 
+// refreshBusinessGauges updates subscription and user count gauges.
+func (e *Engine) refreshBusinessGauges(ctx context.Context) {
+	events, err := e.store.ListEvents(ctx)
+	if err != nil {
+		e.logger.Error("refresh business gauges: list events failed", "error", err)
+		return
+	}
+	for _, ev := range events {
+		count, err := e.store.CountSubscriptions(ctx, ev.Name)
+		if err != nil {
+			continue
+		}
+		metrics.SubscriptionsActive.WithLabelValues(ev.Name).Set(float64(count))
+	}
+	linkedCount, err := e.store.CountLinkedUsers(ctx)
+	if err != nil {
+		e.logger.Error("refresh business gauges: count linked users failed", "error", err)
+		return
+	}
+	metrics.TelegramLinkedUsers.Set(float64(linkedCount))
+}
+
 func (e *Engine) pollAll(ctx context.Context) {
 	for name, src := range e.sources {
+		pollStart := time.Now()
 		snap, err := src.FetchSnapshot()
+		pollDur := time.Since(pollStart).Seconds()
+		metrics.PollDuration.WithLabelValues(name).Observe(pollDur)
+
 		if err != nil {
+			metrics.PollTotal.WithLabelValues(name, "error").Inc()
 			e.logger.Error("fetch snapshot failed", "source", name, "error", err)
 			continue
 		}
+		metrics.PollTotal.WithLabelValues(name, "success").Inc()
+		metrics.PollLastSuccess.WithLabelValues(name).Set(float64(time.Now().Unix()))
 
 		e.mu.Lock()
 		history := e.snapHistory[name]
@@ -121,7 +153,14 @@ func (e *Engine) pollAll(ctx context.Context) {
 			history = history[len(history)-maxHistoryLen:]
 		}
 		e.snapHistory[name] = history
+		metrics.SnapshotCount.WithLabelValues(name).Set(float64(len(history)))
+		metrics.SnapshotAge.WithLabelValues(name).Set(time.Since(snap.FetchedAt).Seconds())
 		e.mu.Unlock()
+
+		// Export business metric values as Prometheus gauges
+		for metricName, val := range snap.Metrics {
+			metrics.MetricValue.WithLabelValues(name, metricName).Set(val)
+		}
 
 		e.logger.Info("snapshot", "source", name, "metrics", snap.Metrics)
 
@@ -151,6 +190,7 @@ func (e *Engine) pollAll(ctx context.Context) {
 						alertKey := fmt.Sprintf("%d:%s:%s:%s:%.0f", sub.ChatID, name, metric, sub.Direction, sub.ThresholdValue)
 						if lastTime, ok := e.lastAlerted[alertKey]; ok {
 							if time.Since(lastTime) < 60*time.Minute {
+								metrics.AlertsDeduplicatedTotal.WithLabelValues(name, "value_alert").Inc()
 								continue
 							}
 						}
@@ -185,6 +225,7 @@ func (e *Engine) pollAll(ctx context.Context) {
 					alertKey := fmt.Sprintf("%d:%s:%s:%s", sub.ChatID, name, metric, sub.Direction)
 					if lastTime, ok := e.lastAlerted[alertKey]; ok {
 						if time.Since(lastTime) < time.Duration(sub.WindowMinutes)*time.Minute {
+							metrics.AlertsDeduplicatedTotal.WithLabelValues(name, "metric_alert").Inc()
 							continue
 						}
 					}
@@ -229,7 +270,10 @@ func (e *Engine) sendMetricAlertToUser(chatID int64, src Source, metric string, 
 		src.URL())
 
 	if err := e.alertFn(chatID, msg); err != nil {
+		metrics.AlertsFailedTotal.WithLabelValues(src.Name(), "metric_alert").Inc()
 		e.logger.Error("send alert failed", "chat_id", chatID, "error", err)
+	} else {
+		metrics.AlertsSentTotal.WithLabelValues(src.Name(), "metric_alert").Inc()
 	}
 }
 
@@ -257,7 +301,10 @@ func (e *Engine) sendValueAlert(chatID int64, src Source, metric string, currVal
 		src.URL())
 
 	if err := e.alertFn(chatID, msg); err != nil {
+		metrics.AlertsFailedTotal.WithLabelValues(src.Name(), "value_alert").Inc()
 		e.logger.Error("send alert failed", "chat_id", chatID, "error", err)
+	} else {
+		metrics.AlertsSentTotal.WithLabelValues(src.Name(), "value_alert").Inc()
 	}
 }
 
@@ -286,12 +333,15 @@ func (e *Engine) sendDueReports(ctx context.Context, hour int) {
 		for _, chatID := range chatIDs {
 			dedupKey := fmt.Sprintf("report:%s:%d:%s", today, chatID, name)
 			if _, already := e.lastAlerted[dedupKey]; already {
+				metrics.AlertsDeduplicatedTotal.WithLabelValues(name, "daily_report").Inc()
 				continue
 			}
 			if err := e.alertFn(chatID, report); err != nil {
+				metrics.AlertsFailedTotal.WithLabelValues(name, "daily_report").Inc()
 				e.logger.Error("send alert failed", "chat_id", chatID, "error", err)
 				continue
 			}
+			metrics.AlertsSentTotal.WithLabelValues(name, "daily_report").Inc()
 			e.lastAlerted[dedupKey] = time.Now()
 			sent++
 		}

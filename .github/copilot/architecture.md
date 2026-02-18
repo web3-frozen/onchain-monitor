@@ -20,7 +20,8 @@ internal/
     subscriptions.go            # CRUD for subscriptions
     stats.go                    # GET /api/stats, /api/stats/meta
     events.go                   # GET /api/events
-  middleware/                   # CORS, logging, recovery
+  metrics/metrics.go            # Prometheus metric definitions (all counters/histograms/gauges)
+  middleware/                   # CORS, logging, recovery, Prometheus HTTP metrics
   monitor/
     source.go                   # Source interface + Snapshot struct
     engine.go                   # Polling loop, alert checking, daily reports

@@ -278,3 +278,21 @@ func (s *Store) GetDailyReportSubscribers(ctx context.Context, eventName string,
 	}
 	return ids, rows.Err()
 }
+
+// CountSubscriptions returns the number of active subscriptions for an event.
+func (s *Store) CountSubscriptions(ctx context.Context, eventName string) (int, error) {
+	var count int
+	err := s.pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM subscriptions s
+		JOIN events e ON e.id = s.event_id
+		WHERE e.name = $1`, eventName).Scan(&count)
+	return count, err
+}
+
+// CountLinkedUsers returns the number of linked Telegram users.
+func (s *Store) CountLinkedUsers(ctx context.Context) (int, error) {
+	var count int
+	err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM telegram_users WHERE linked = true`).Scan(&count)
+	return count, err
+}

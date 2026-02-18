@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/web3-frozen/onchain-monitor/internal/config"
 	"github.com/web3-frozen/onchain-monitor/internal/handler"
 	"github.com/web3-frozen/onchain-monitor/internal/middleware"
@@ -66,8 +67,10 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(middleware.Recover(logger))
 	r.Use(middleware.Logger(logger))
+	r.Use(middleware.Metrics())
 	r.Use(middleware.CORS(cfg.FrontendOrigin))
 
+	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/healthz", handler.Health())
 	r.Get("/readyz", handler.Ready(db))
 
