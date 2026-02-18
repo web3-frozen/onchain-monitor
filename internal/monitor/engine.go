@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/web3-frozen/onchain-monitor/internal/dedup"
 	"github.com/web3-frozen/onchain-monitor/internal/metrics"
 	"github.com/web3-frozen/onchain-monitor/internal/store"
 )
@@ -28,20 +29,20 @@ type Engine struct {
 	store       *store.Store
 	logger      *slog.Logger
 	alertFn     AlertFunc
+	dedup       *dedup.Deduplicator
 	sources     map[string]Source
 	snapHistory map[string][]*Snapshot
-	lastAlerted map[string]time.Time
 	mu          sync.RWMutex
 }
 
-func NewEngine(s *store.Store, logger *slog.Logger, alertFn AlertFunc) *Engine {
+func NewEngine(s *store.Store, logger *slog.Logger, alertFn AlertFunc, dd *dedup.Deduplicator) *Engine {
 	return &Engine{
 		store:       s,
 		logger:      logger,
 		alertFn:     alertFn,
+		dedup:       dd,
 		sources:     make(map[string]Source),
 		snapHistory: make(map[string][]*Snapshot),
-		lastAlerted: make(map[string]time.Time),
 	}
 }
 
@@ -189,14 +190,12 @@ func (e *Engine) pollAll(ctx context.Context) {
 					}
 					if triggered {
 						alertKey := fmt.Sprintf("%d:%s:%s:%s:%.0f", sub.ChatID, name, metric, sub.Direction, sub.ThresholdValue)
-						if lastTime, ok := e.lastAlerted[alertKey]; ok {
-							if time.Since(lastTime) < 60*time.Minute {
-								metrics.AlertsDeduplicatedTotal.WithLabelValues(name, "value_alert").Inc()
-								continue
-							}
+						if e.dedup.AlreadySent(ctx, alertKey) {
+							metrics.AlertsDeduplicatedTotal.WithLabelValues(name, "value_alert").Inc()
+							continue
 						}
 						e.sendValueAlert(sub.ChatID, src, metric, currVal, sub.ThresholdValue, sub.Direction)
-						e.lastAlerted[alertKey] = time.Now()
+						e.dedup.Record(ctx, alertKey, 60*time.Minute)
 					}
 				}
 				continue
@@ -224,14 +223,12 @@ func (e *Engine) pollAll(ctx context.Context) {
 
 				if change >= threshold {
 					alertKey := fmt.Sprintf("%d:%s:%s:%s", sub.ChatID, name, metric, sub.Direction)
-					if lastTime, ok := e.lastAlerted[alertKey]; ok {
-						if time.Since(lastTime) < time.Duration(sub.WindowMinutes)*time.Minute {
-							metrics.AlertsDeduplicatedTotal.WithLabelValues(name, "metric_alert").Inc()
-							continue
-						}
+					if e.dedup.AlreadySent(ctx, alertKey) {
+						metrics.AlertsDeduplicatedTotal.WithLabelValues(name, "metric_alert").Inc()
+						continue
 					}
 					e.sendMetricAlertToUser(sub.ChatID, src, metric, prevVal, currVal, change, sub.WindowMinutes, sub.Direction)
-					e.lastAlerted[alertKey] = time.Now()
+					e.dedup.Record(ctx, alertKey, time.Duration(sub.WindowMinutes)*time.Minute)
 				}
 			}
 		}
@@ -321,14 +318,12 @@ func (e *Engine) checkMaxpainAlerts(ctx context.Context) {
 
 		if dist <= threshold {
 			alertKey := fmt.Sprintf("maxpain:%d:%s:%s:%s", sub.ChatID, coin, side, interval)
-			if lastTime, ok := e.lastAlerted[alertKey]; ok {
-				if time.Since(lastTime) < 60*time.Minute {
-					metrics.AlertsDeduplicatedTotal.WithLabelValues("maxpain", "maxpain_alert").Inc()
-					continue
-				}
+			if e.dedup.AlreadySent(ctx, alertKey) {
+				metrics.AlertsDeduplicatedTotal.WithLabelValues("maxpain", "maxpain_alert").Inc()
+				continue
 			}
 			e.sendMaxpainAlert(sub.ChatID, maxpainSrc, coin, side, interval, entry.Price, maxpainPrice, dist)
-			e.lastAlerted[alertKey] = time.Now()
+			e.dedup.Record(ctx, alertKey, 60*time.Minute)
 		}
 	}
 }
@@ -418,7 +413,7 @@ func (e *Engine) checkMerklAlerts(ctx context.Context) {
 		var newOpps []MerklOpp
 		for _, opp := range opps {
 			alertKey := fmt.Sprintf("merkl:%d:%s", sub.ChatID, opp.ID)
-			if _, seen := e.lastAlerted[alertKey]; seen {
+			if e.dedup.AlreadySent(ctx, alertKey) {
 				continue
 			}
 			newOpps = append(newOpps, opp)
@@ -431,10 +426,10 @@ func (e *Engine) checkMerklAlerts(ctx context.Context) {
 		// Send as a single grouped message
 		e.sendMerklGroupedAlert(sub.ChatID, newOpps)
 
-		// Mark all as alerted
+		// Mark all as alerted (24h TTL — opportunities rarely change ID)
 		for _, opp := range newOpps {
 			alertKey := fmt.Sprintf("merkl:%d:%s", sub.ChatID, opp.ID)
-			e.lastAlerted[alertKey] = time.Now()
+			e.dedup.Record(ctx, alertKey, 24*time.Hour)
 		}
 	}
 }
@@ -598,7 +593,7 @@ func (e *Engine) sendDueReports(ctx context.Context, hour int) {
 		sent := 0
 		for _, chatID := range chatIDs {
 			dedupKey := fmt.Sprintf("report:%s:%d:%s", today, chatID, name)
-			if _, already := e.lastAlerted[dedupKey]; already {
+			if e.dedup.AlreadySent(ctx, dedupKey) {
 				metrics.AlertsDeduplicatedTotal.WithLabelValues(name, "daily_report").Inc()
 				continue
 			}
@@ -608,7 +603,7 @@ func (e *Engine) sendDueReports(ctx context.Context, hour int) {
 				continue
 			}
 			metrics.AlertsSentTotal.WithLabelValues(name, "daily_report").Inc()
-			e.lastAlerted[dedupKey] = time.Now()
+			e.dedup.Record(ctx, dedupKey, 24*time.Hour)
 			sent++
 		}
 		if sent > 0 {

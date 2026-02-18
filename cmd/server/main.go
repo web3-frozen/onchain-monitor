@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/web3-frozen/onchain-monitor/internal/config"
+	"github.com/web3-frozen/onchain-monitor/internal/dedup"
 	"github.com/web3-frozen/onchain-monitor/internal/handler"
 	"github.com/web3-frozen/onchain-monitor/internal/middleware"
 	"github.com/web3-frozen/onchain-monitor/internal/monitor"
@@ -53,8 +54,17 @@ func main() {
 	// Telegram bot
 	bot := telegram.NewBot(cfg.TelegramToken, db, logger)
 
+	// Redis dedup
+	dd, err := dedup.New(cfg.RedisURL)
+	if err != nil {
+		logger.Error("failed to connect to redis", "error", err)
+		os.Exit(1)
+	}
+	defer dd.Close()
+	logger.Info("redis connected for alert dedup")
+
 	// Monitoring engine
-	engine := monitor.NewEngine(db, logger, bot.SendMessage)
+	engine := monitor.NewEngine(db, logger, bot.SendMessage, dd)
 	engine.Register(sources.NewAltura())
 	engine.Register(sources.NewNeverland())
 	engine.Register(sources.NewFearGreed())

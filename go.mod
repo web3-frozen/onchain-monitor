@@ -8,6 +8,7 @@ require (
 	github.com/infisical/go-sdk v0.6.8
 	github.com/jackc/pgx/v5 v5.7.4
 	github.com/prometheus/client_golang v1.20.5
+	github.com/redis/go-redis/v9 v9.7.3
 )
 
 require (
@@ -32,6 +33,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chromedp/cdproto v0.0.0-20250724212937-08a3db8b4327 // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-json-experiment/json v0.0.0-20250725192818-e39067aee2d2 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
