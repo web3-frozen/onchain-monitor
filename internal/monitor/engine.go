@@ -235,6 +235,102 @@ func (e *Engine) pollAll(ctx context.Context) {
 			}
 		}
 	}
+
+	// Check maxpain alerts separately (uses cross-source data)
+	e.checkMaxpainAlerts(ctx)
+}
+
+// checkMaxpainAlerts checks if current prices have crossed liquidation max pain levels.
+func (e *Engine) checkMaxpainAlerts(ctx context.Context) {
+	maxpainSrc, ok := e.sources["maxpain"]
+	if !ok {
+		return
+	}
+
+	subscribers, err := e.store.GetSubscribersWithThresholds(ctx, "general_maxpain_alert")
+	if err != nil || len(subscribers) == 0 {
+		return
+	}
+
+	e.mu.RLock()
+	snap := e.snapHistory["maxpain"]
+	e.mu.RUnlock()
+	if len(snap) == 0 {
+		return
+	}
+	latest := snap[len(snap)-1]
+
+	for _, sub := range subscribers {
+		coin := strings.ToUpper(sub.Coin)
+		if coin == "" {
+			continue
+		}
+
+		priceKey := coin + "_price"
+		price, ok := latest.Metrics[priceKey]
+		if !ok || price <= 0 {
+			continue
+		}
+
+		var maxpainPrice float64
+		side := strings.ToLower(sub.Direction)
+		switch side {
+		case "long":
+			maxpainPrice = latest.Metrics[coin+"_long_maxpain"]
+		case "short":
+			maxpainPrice = latest.Metrics[coin+"_short_maxpain"]
+		default:
+			continue
+		}
+		if maxpainPrice <= 0 {
+			continue
+		}
+
+		// Calculate distance percentage from current price to maxpain
+		dist := math.Abs(price-maxpainPrice) / price * 100
+
+		// Alert when price is within threshold_value% of maxpain (default 1%)
+		threshold := sub.ThresholdValue
+		if threshold <= 0 {
+			threshold = 1.0
+		}
+
+		if dist <= threshold {
+			alertKey := fmt.Sprintf("maxpain:%d:%s:%s", sub.ChatID, coin, side)
+			if lastTime, ok := e.lastAlerted[alertKey]; ok {
+				if time.Since(lastTime) < 60*time.Minute {
+					metrics.AlertsDeduplicatedTotal.WithLabelValues("maxpain", "maxpain_alert").Inc()
+					continue
+				}
+			}
+			e.sendMaxpainAlert(sub.ChatID, maxpainSrc, coin, side, price, maxpainPrice, dist)
+			e.lastAlerted[alertKey] = time.Now()
+		}
+	}
+}
+
+func (e *Engine) sendMaxpainAlert(chatID int64, src Source, coin, side string, price, maxpainPrice, dist float64) {
+	sideLabel := "LONG"
+	if side == "short" {
+		sideLabel = "SHORT"
+	}
+	msg := fmt.Sprintf("🚨 %s %s MAX PAIN ALERT\n\n"+
+		"%s price ($%s) is within %.1f%% of %s max pain ($%s)!\n\n"+
+		"Current Price: $%s\n"+
+		"%s Max Pain:   $%s\n\n"+
+		"🔗 %s",
+		coin, sideLabel,
+		coin, formatNum(price), dist, sideLabel, formatNum(maxpainPrice),
+		formatNum(price),
+		sideLabel, formatNum(maxpainPrice),
+		src.URL())
+
+	if err := e.alertFn(chatID, msg); err != nil {
+		metrics.AlertsFailedTotal.WithLabelValues("maxpain", "maxpain_alert").Inc()
+		e.logger.Error("send maxpain alert failed", "chat_id", chatID, "error", err)
+	} else {
+		metrics.AlertsSentTotal.WithLabelValues("maxpain", "maxpain_alert").Inc()
+	}
 }
 
 func (e *Engine) sendMetricAlertToUser(chatID int64, src Source, metric string, prevVal, currVal, changePct float64, windowMin int, direction string) {

@@ -6,8 +6,11 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /server ./cmd/server
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM alpine:3.20
+RUN apk add --no-cache chromium ca-certificates tzdata \
+    && adduser -D -u 65534 nonroot
+ENV CHROME_BIN=/usr/bin/chromium-browser
 COPY --from=builder /server /server
 EXPOSE 8080
-USER nonroot:nonroot
+USER nonroot
 ENTRYPOINT ["/server"]

@@ -19,5 +19,5 @@ jobs:
       app-name: onchain-monitor
       image-name: onchain-monitor
       workload-dir: workloads/onchain-monitor
-      go-version: "1.23"
+      go-version: "1.24"
     secrets: inherit

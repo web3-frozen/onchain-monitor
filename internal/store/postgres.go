@@ -136,12 +136,13 @@ type Subscription struct {
 	Direction      string    `json:"direction"`
 	ReportHour     int       `json:"report_hour"`
 	ThresholdValue float64   `json:"threshold_value"`
+	Coin           string    `json:"coin"`
 	CreatedAt      time.Time `json:"created_at"`
 }
 
 func (s *Store) ListSubscriptions(ctx context.Context, tgChatID int64) ([]Subscription, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT s.id, s.tg_user_id, s.event_id, s.threshold_pct, s.window_minutes, s.direction, s.report_hour, s.threshold_value, s.created_at
+		SELECT s.id, s.tg_user_id, s.event_id, s.threshold_pct, s.window_minutes, s.direction, s.report_hour, s.threshold_value, s.coin, s.created_at
 		FROM subscriptions s
 		JOIN telegram_users u ON u.id = s.tg_user_id
 		WHERE u.tg_chat_id = $1
@@ -154,7 +155,7 @@ func (s *Store) ListSubscriptions(ctx context.Context, tgChatID int64) ([]Subscr
 	var subs []Subscription
 	for rows.Next() {
 		var sub Subscription
-		if err := rows.Scan(&sub.ID, &sub.TgUserID, &sub.EventID, &sub.ThresholdPct, &sub.WindowMinutes, &sub.Direction, &sub.ReportHour, &sub.ThresholdValue, &sub.CreatedAt); err != nil {
+		if err := rows.Scan(&sub.ID, &sub.TgUserID, &sub.EventID, &sub.ThresholdPct, &sub.WindowMinutes, &sub.Direction, &sub.ReportHour, &sub.ThresholdValue, &sub.Coin, &sub.CreatedAt); err != nil {
 			return nil, err
 		}
 		subs = append(subs, sub)
@@ -162,28 +163,28 @@ func (s *Store) ListSubscriptions(ctx context.Context, tgChatID int64) ([]Subscr
 	return subs, rows.Err()
 }
 
-func (s *Store) Subscribe(ctx context.Context, tgChatID int64, eventID int, thresholdPct float64, windowMinutes int, direction string, reportHour int, thresholdValue float64) (*Subscription, error) {
+func (s *Store) Subscribe(ctx context.Context, tgChatID int64, eventID int, thresholdPct float64, windowMinutes int, direction string, reportHour int, thresholdValue float64, coin string) (*Subscription, error) {
 	var sub Subscription
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO subscriptions (tg_user_id, event_id, threshold_pct, window_minutes, direction, report_hour, threshold_value)
-		SELECT u.id, $2, $3, $4, $5, $6, $7 FROM telegram_users u WHERE u.tg_chat_id = $1
-		RETURNING id, tg_user_id, event_id, threshold_pct, window_minutes, direction, report_hour, threshold_value, created_at`,
-		tgChatID, eventID, thresholdPct, windowMinutes, direction, reportHour, thresholdValue).
-		Scan(&sub.ID, &sub.TgUserID, &sub.EventID, &sub.ThresholdPct, &sub.WindowMinutes, &sub.Direction, &sub.ReportHour, &sub.ThresholdValue, &sub.CreatedAt)
+		INSERT INTO subscriptions (tg_user_id, event_id, threshold_pct, window_minutes, direction, report_hour, threshold_value, coin)
+		SELECT u.id, $2, $3, $4, $5, $6, $7, $8 FROM telegram_users u WHERE u.tg_chat_id = $1
+		RETURNING id, tg_user_id, event_id, threshold_pct, window_minutes, direction, report_hour, threshold_value, coin, created_at`,
+		tgChatID, eventID, thresholdPct, windowMinutes, direction, reportHour, thresholdValue, coin).
+		Scan(&sub.ID, &sub.TgUserID, &sub.EventID, &sub.ThresholdPct, &sub.WindowMinutes, &sub.Direction, &sub.ReportHour, &sub.ThresholdValue, &sub.Coin, &sub.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
 	return &sub, nil
 }
 
-func (s *Store) UpdateSubscription(ctx context.Context, id int64, thresholdPct float64, windowMinutes int, direction string, reportHour int, thresholdValue float64) (*Subscription, error) {
+func (s *Store) UpdateSubscription(ctx context.Context, id int64, thresholdPct float64, windowMinutes int, direction string, reportHour int, thresholdValue float64, coin string) (*Subscription, error) {
 	var sub Subscription
 	err := s.pool.QueryRow(ctx, `
-		UPDATE subscriptions SET threshold_pct = $2, window_minutes = $3, direction = $4, report_hour = $5, threshold_value = $6
+		UPDATE subscriptions SET threshold_pct = $2, window_minutes = $3, direction = $4, report_hour = $5, threshold_value = $6, coin = $7
 		WHERE id = $1
-		RETURNING id, tg_user_id, event_id, threshold_pct, window_minutes, direction, report_hour, threshold_value, created_at`,
-		id, thresholdPct, windowMinutes, direction, reportHour, thresholdValue).
-		Scan(&sub.ID, &sub.TgUserID, &sub.EventID, &sub.ThresholdPct, &sub.WindowMinutes, &sub.Direction, &sub.ReportHour, &sub.ThresholdValue, &sub.CreatedAt)
+		RETURNING id, tg_user_id, event_id, threshold_pct, window_minutes, direction, report_hour, threshold_value, coin, created_at`,
+		id, thresholdPct, windowMinutes, direction, reportHour, thresholdValue, coin).
+		Scan(&sub.ID, &sub.TgUserID, &sub.EventID, &sub.ThresholdPct, &sub.WindowMinutes, &sub.Direction, &sub.ReportHour, &sub.ThresholdValue, &sub.Coin, &sub.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -225,11 +226,12 @@ type SubscriberConfig struct {
 	WindowMinutes  int
 	Direction      string
 	ThresholdValue float64
+	Coin           string
 }
 
 func (s *Store) GetSubscribersWithThresholds(ctx context.Context, eventName string) ([]SubscriberConfig, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT u.tg_chat_id, s.threshold_pct, s.window_minutes, s.direction, s.threshold_value
+		SELECT u.tg_chat_id, s.threshold_pct, s.window_minutes, s.direction, s.threshold_value, s.coin
 		FROM subscriptions s
 		JOIN telegram_users u ON u.id = s.tg_user_id
 		JOIN events e ON e.id = s.event_id
@@ -242,7 +244,7 @@ func (s *Store) GetSubscribersWithThresholds(ctx context.Context, eventName stri
 	var configs []SubscriberConfig
 	for rows.Next() {
 		var c SubscriberConfig
-		if err := rows.Scan(&c.ChatID, &c.ThresholdPct, &c.WindowMinutes, &c.Direction, &c.ThresholdValue); err != nil {
+		if err := rows.Scan(&c.ChatID, &c.ThresholdPct, &c.WindowMinutes, &c.Direction, &c.ThresholdValue, &c.Coin); err != nil {
 			return nil, err
 		}
 		configs = append(configs, c)

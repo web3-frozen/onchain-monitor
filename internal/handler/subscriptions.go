@@ -46,6 +46,7 @@ func Subscribe(s *store.Store) http.HandlerFunc {
 		Direction      string  `json:"direction"`
 		ReportHour     *int    `json:"report_hour"`
 		ThresholdValue float64 `json:"threshold_value"`
+		Coin           string  `json:"coin"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -66,7 +67,7 @@ func Subscribe(s *store.Store) http.HandlerFunc {
 		if req.WindowMinutes <= 0 {
 			req.WindowMinutes = 1
 		}
-		validDirs := map[string]bool{"drop": true, "increase": true, "higher": true, "lower": true}
+		validDirs := map[string]bool{"drop": true, "increase": true, "higher": true, "lower": true, "long": true, "short": true}
 		if !validDirs[req.Direction] {
 			req.Direction = "drop"
 		}
@@ -78,7 +79,7 @@ func Subscribe(s *store.Store) http.HandlerFunc {
 			req.ThresholdValue = 0
 		}
 
-		sub, err := s.Subscribe(r.Context(), req.TgChatID, req.EventID, req.ThresholdPct, req.WindowMinutes, req.Direction, reportHour, req.ThresholdValue)
+		sub, err := s.Subscribe(r.Context(), req.TgChatID, req.EventID, req.ThresholdPct, req.WindowMinutes, req.Direction, reportHour, req.ThresholdValue, req.Coin)
 		if err != nil {
 			http.Error(w, `{"error":"failed to subscribe"}`, http.StatusInternalServerError)
 			return
@@ -97,6 +98,7 @@ func UpdateSubscription(s *store.Store) http.HandlerFunc {
 		Direction      string  `json:"direction"`
 		ReportHour     *int    `json:"report_hour"`
 		ThresholdValue float64 `json:"threshold_value"`
+		Coin           string  `json:"coin"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +121,7 @@ func UpdateSubscription(s *store.Store) http.HandlerFunc {
 		if req.WindowMinutes <= 0 {
 			req.WindowMinutes = 1
 		}
-		validDirs := map[string]bool{"drop": true, "increase": true, "higher": true, "lower": true}
+		validDirs := map[string]bool{"drop": true, "increase": true, "higher": true, "lower": true, "long": true, "short": true}
 		if !validDirs[req.Direction] {
 			req.Direction = "drop"
 		}
@@ -131,7 +133,7 @@ func UpdateSubscription(s *store.Store) http.HandlerFunc {
 			req.ThresholdValue = 0
 		}
 
-		sub, err := s.UpdateSubscription(r.Context(), id, req.ThresholdPct, req.WindowMinutes, req.Direction, reportHour, req.ThresholdValue)
+		sub, err := s.UpdateSubscription(r.Context(), id, req.ThresholdPct, req.WindowMinutes, req.Direction, reportHour, req.ThresholdValue, req.Coin)
 		if err != nil {
 			http.Error(w, `{"error":"failed to update subscription"}`, http.StatusInternalServerError)
 			return
