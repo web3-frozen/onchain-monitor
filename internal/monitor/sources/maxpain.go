@@ -176,7 +176,8 @@ func (m *MaxPain) queryMaxPain(ctx context.Context, symbol, interval string) (mo
 
 	price, err := m.store.GetCurrentPrice(ctx, symbol)
 	if err != nil {
-		return monitor.MaxPainEntry{}, fmt.Errorf("get price for %s: %w", symbol, err)
+		// No data yet — return zero entry instead of error
+		return monitor.MaxPainEntry{Symbol: symbol, Interval: interval}, nil
 	}
 
 	longMP, shortMP, err := m.store.QueryMaxPain(ctx, symbol, window, bs)
