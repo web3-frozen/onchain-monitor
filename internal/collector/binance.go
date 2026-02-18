@@ -4,10 +4,8 @@ import (
 "context"
 "encoding/json"
 "fmt"
-"io"
 "log/slog"
 "math"
-"net/http"
 "strings"
 "sync"
 "time"
@@ -17,13 +15,12 @@ import (
 )
 
 const (
-binanceWSBase  = "wss://fstream.binance.com/ws"
-binanceRestURL = "https://fapi.binance.com/fapi/v1/allForceOrders"
-reconnectBase  = 2 * time.Second
-reconnectMax   = 60 * time.Second
-flushInterval  = 5 * time.Second
-cleanupAge     = 30 * 24 * time.Hour // keep 30 days (supports 1M interval)
-cleanupEvery   = 1 * time.Hour
+binanceWSBase = "wss://fstream.binance.com/ws"
+reconnectBase = 2 * time.Second
+reconnectMax  = 60 * time.Second
+flushInterval = 5 * time.Second
+cleanupAge    = 30 * 24 * time.Hour // keep 30 days (supports 1M interval)
+cleanupEvery  = 1 * time.Hour
 )
 
 var trackedSymbols = []string{"btcusdt", "ethusdt"}
@@ -43,21 +40,9 @@ TradeTime int64  `json:"T"`
 } `json:"o"`
 }
 
-type binanceRestOrder struct {
-Symbol       string `json:"symbol"`
-Price        string `json:"price"`
-OrigQty      string `json:"origQty"`
-ExecutedQty  string `json:"executedQty"`
-AveragePrice string `json:"averagePrice"`
-Side         string `json:"side"`
-Status       string `json:"status"`
-Time         int64  `json:"time"`
-}
-
 type Collector struct {
 store  *store.Store
 logger *slog.Logger
-client *http.Client
 
 mu     sync.Mutex
 buffer []store.LiquidationEvent
@@ -67,7 +52,6 @@ func New(db *store.Store, logger *slog.Logger) *Collector {
 return &Collector{
 store:  db,
 logger: logger,
-client: &http.Client{Timeout: 15 * time.Second},
 buffer: make([]store.LiquidationEvent, 0, 100),
 }
 }
@@ -82,9 +66,6 @@ wsURL := binanceWSBase + "/" + strings.Join(streams, "/")
 
 go c.flushLoop(ctx)
 go c.cleanupLoop(ctx)
-
-// Backfill recent liquidations from REST API so maxpain has data immediately.
-c.backfill(ctx)
 
 c.logger.Info("liquidation collector starting", "symbols", trackedSymbols, "url", wsURL)
 
@@ -109,87 +90,6 @@ return
 case <-time.After(backoff):
 }
 backoff = time.Duration(math.Min(float64(backoff*2), float64(reconnectMax)))
-}
-}
-
-// backfill fetches recent liquidation orders from Binance REST API.
-func (c *Collector) backfill(ctx context.Context) {
-for _, sym := range trackedSymbols {
-symbol := strings.ToUpper(sym)
-url := fmt.Sprintf("%s?symbol=%s&limit=100", binanceRestURL, symbol)
-req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-if err != nil {
-c.logger.Warn("backfill request create failed", "symbol", symbol, "error", err)
-continue
-}
-resp, err := c.client.Do(req)
-if err != nil {
-c.logger.Warn("backfill request failed", "symbol", symbol, "error", err)
-continue
-}
-body, err := io.ReadAll(resp.Body)
-resp.Body.Close() //nolint:errcheck
-if err != nil || resp.StatusCode != 200 {
-c.logger.Warn("backfill read failed", "symbol", symbol, "status", resp.StatusCode)
-continue
-}
-
-var orders []binanceRestOrder
-if err := json.Unmarshal(body, &orders); err != nil {
-c.logger.Warn("backfill parse failed", "symbol", symbol, "error", err)
-continue
-}
-
-var events []store.LiquidationEvent
-for _, o := range orders {
-ev := restOrderToEvent(o)
-if ev != nil {
-events = append(events, *ev)
-}
-}
-
-if len(events) > 0 {
-if err := c.store.InsertLiquidationEvents(ctx, events); err != nil {
-c.logger.Warn("backfill insert failed", "symbol", symbol, "error", err)
-} else {
-c.logger.Info("backfilled liquidation events", "symbol", symbol, "count", len(events))
-}
-}
-}
-}
-
-func restOrderToEvent(o binanceRestOrder) *store.LiquidationEvent {
-price := parseFloat(o.AveragePrice)
-if price <= 0 {
-price = parseFloat(o.Price)
-}
-qty := parseFloat(o.ExecutedQty)
-if qty <= 0 {
-qty = parseFloat(o.OrigQty)
-}
-if price <= 0 || qty <= 0 {
-return nil
-}
-
-var side string
-switch o.Side {
-case "SELL":
-side = "LONG"
-case "BUY":
-side = "SHORT"
-default:
-return nil
-}
-
-symbol := strings.TrimSuffix(o.Symbol, "USDT")
-return &store.LiquidationEvent{
-Symbol:    symbol,
-Side:      side,
-Price:     price,
-Quantity:  qty,
-USDValue:  price * qty,
-Exchange:  "binance",
-EventTime: time.UnixMilli(o.Time),
 }
 }
 
@@ -242,7 +142,7 @@ c.mu.Unlock()
 return
 }
 if len(events) > 0 {
-c.logger.Debug("flushed liquidation events", "count", len(events))
+c.logger.Info("flushed liquidation events", "count", len(events))
 }
 }
 
