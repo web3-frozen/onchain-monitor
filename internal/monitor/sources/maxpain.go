@@ -29,6 +29,8 @@ var windowFromInterval = map[string]time.Duration{
 	"48h": 48 * time.Hour,
 	"3d":  72 * time.Hour,
 	"7d":  168 * time.Hour,
+	"2w":  336 * time.Hour,
+	"1M":  720 * time.Hour,
 }
 
 // MaxPain calculates liquidation max pain from Binance forceOrder data stored in Postgres.

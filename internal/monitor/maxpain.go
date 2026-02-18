@@ -16,6 +16,8 @@ var maxpainIntervals = map[int]string{
 	2880:  "48h",
 	4320:  "3d",
 	10080: "7d",
+	20160: "2w",
+	43200: "1M",
 }
 
 // IntervalFromMinutes converts window_minutes to an interval string.

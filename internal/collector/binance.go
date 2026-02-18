@@ -19,7 +19,7 @@ const (
 	reconnectBase = 2 * time.Second
 	reconnectMax  = 60 * time.Second
 	flushInterval = 5 * time.Second
-	cleanupAge    = 7 * 24 * time.Hour
+	cleanupAge    = 30 * 24 * time.Hour // keep 30 days of data (supports 1M interval)
 	cleanupEvery  = 1 * time.Hour
 )
 
