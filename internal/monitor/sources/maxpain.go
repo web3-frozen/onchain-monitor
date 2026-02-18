@@ -188,8 +188,8 @@ func (m *MaxPain) scrapeIntervals(intervals []string) (map[string][]monitor.MaxP
 	// Navigate once; default view is 24h
 	if err := chromedp.Run(ctx,
 		chromedp.Navigate(maxpainURL),
-		chromedp.WaitVisible(`table tbody tr`, chromedp.ByQuery),
-		chromedp.Sleep(2*time.Second),
+		chromedp.WaitVisible(`.ant-table-tbody tr.ant-table-row`, chromedp.ByQuery),
+		chromedp.Sleep(3*time.Second),
 	); err != nil {
 		return nil, fmt.Errorf("chromedp navigate: %w", err)
 	}
@@ -242,21 +242,21 @@ func (m *MaxPain) scrapeIntervals(intervals []string) (map[string][]monitor.MaxP
 // extractJS is evaluated in the browser to pull max pain data from the rendered table.
 const extractJS = `
 (() => {
-	const rows = document.querySelectorAll('table tbody tr');
+	const rows = document.querySelectorAll('.ant-table-tbody tr.ant-table-row');
 	const data = [];
 	rows.forEach(row => {
 		const cells = row.querySelectorAll('td');
-		if (cells.length < 5) return;
-		// Column layout: Symbol | Price | Long Max Pain Price | Long Distance | Short Max Pain Price | Short Distance
-		const symbol = (cells[0].textContent || '').trim().split(/\s/)[0];
+		if (cells.length < 8) return;
+		// Column layout: (expand) | Ranking | Symbol | Price | Short Max Pain | Short Distance | Long Max Pain | Long Distance
+		const symbol = (cells[2].textContent || '').trim().split(/\s/)[0];
 		const parseNum = s => {
-			s = (s || '').replace(/[$,\s]/g, '');
+			s = (s || '').replace(/[$,\s%]/g, '');
 			const n = parseFloat(s);
 			return isNaN(n) ? 0 : n;
 		};
-		const price = parseNum(cells[1].textContent);
-		const longMaxPain = parseNum(cells[2].textContent);
+		const price = parseNum(cells[3].textContent);
 		const shortMaxPain = parseNum(cells[4].textContent);
+		const longMaxPain = parseNum(cells[6].textContent);
 		if (symbol && price > 0) {
 			data.push({
 				symbol: symbol,
