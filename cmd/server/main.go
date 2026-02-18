@@ -54,10 +54,18 @@ func main() {
 	// Telegram bot
 	bot := telegram.NewBot(cfg.TelegramToken, db, logger)
 
-	// Redis dedup
-	dd, err := dedup.New(cfg.RedisURL, cfg.RedisPassword)
+	// Redis dedup (retry up to 30s for ExternalSecret to sync)
+	var dd *dedup.Deduplicator
+	for i := 0; i < 6; i++ {
+		dd, err = dedup.New(cfg.RedisURL, cfg.RedisPassword)
+		if err == nil {
+			break
+		}
+		logger.Warn("redis not ready, retrying...", "attempt", i+1, "error", err)
+		time.Sleep(5 * time.Second)
+	}
 	if err != nil {
-		logger.Error("failed to connect to redis", "error", err)
+		logger.Error("failed to connect to redis after retries", "error", err)
 		os.Exit(1)
 	}
 	defer dd.Close()
