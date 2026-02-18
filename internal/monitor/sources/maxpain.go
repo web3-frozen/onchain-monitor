@@ -205,20 +205,37 @@ func (m *MaxPain) scrapeIntervals(intervals []string) (map[string][]MaxPainEntry
 	ctx, cancel := chromedp.NewContext(allocCtx)
 	defer cancel()
 
-	ctx, cancel = context.WithTimeout(ctx, time.Duration(30+30*len(intervals))*time.Second)
+	ctx, cancel = context.WithTimeout(ctx, time.Duration(30+20*len(intervals))*time.Second)
 	defer cancel()
+
+	// Navigate once; default view is 24h
+	if err := chromedp.Run(ctx,
+		chromedp.Navigate(maxpainURL),
+		chromedp.WaitVisible(`table tbody tr`, chromedp.ByQuery),
+		chromedp.Sleep(2*time.Second),
+	); err != nil {
+		return nil, fmt.Errorf("chromedp navigate: %w", err)
+	}
 
 	result := make(map[string][]MaxPainEntry, len(intervals))
 
 	for _, iv := range intervals {
+		// Click the tab button matching this interval value, then wait for table refresh
+		if iv != "24h" {
+			tabSelector := fmt.Sprintf(`button[value="%s"], [role="tab"][value="%s"]`, iv, iv)
+			if err := chromedp.Run(ctx,
+				chromedp.Click(tabSelector, chromedp.ByQuery),
+				chromedp.Sleep(3*time.Second),
+			); err != nil {
+				m.logger.Warn("click maxpain tab failed", "interval", iv, "error", err)
+				continue
+			}
+		}
+
 		var resultJSON string
-		err := chromedp.Run(ctx,
-			chromedp.Navigate(maxpainURL+"?type="+iv),
-			chromedp.WaitVisible(`table tbody tr`, chromedp.ByQuery),
-			chromedp.Sleep(2*time.Second),
+		if err := chromedp.Run(ctx,
 			chromedp.Evaluate(extractJS, &resultJSON),
-		)
-		if err != nil {
+		); err != nil {
 			m.logger.Warn("scrape maxpain interval failed", "interval", iv, "error", err)
 			continue
 		}
