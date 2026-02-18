@@ -9,7 +9,7 @@ type MaxPainEntry struct {
 	Interval                 string  `json:"interval"`
 }
 
-// maxpainIntervals maps window_minutes to CoinGlass interval strings.
+// maxpainIntervals maps window_minutes to interval strings.
 var maxpainIntervals = map[int]string{
 	720:   "12h",
 	1440:  "24h",
@@ -18,7 +18,7 @@ var maxpainIntervals = map[int]string{
 	10080: "7d",
 }
 
-// IntervalFromMinutes converts window_minutes to a CoinGlass interval string.
+// IntervalFromMinutes converts window_minutes to an interval string.
 func IntervalFromMinutes(minutes int) string {
 	if iv, ok := maxpainIntervals[minutes]; ok {
 		return iv

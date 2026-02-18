@@ -51,6 +51,20 @@ UPDATE events SET name = 'altura_metric_alert', description = 'Alert when Altura
 UPDATE events SET name = 'neverland_metric_alert', description = 'Alert when Neverland metrics'
     WHERE name IN ('neverland_drop');
 
+-- Liquidation events for self-built max pain calculation
+CREATE TABLE IF NOT EXISTS liquidation_events (
+    id BIGSERIAL PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    side TEXT NOT NULL,
+    price DOUBLE PRECISION NOT NULL,
+    quantity DOUBLE PRECISION NOT NULL,
+    usd_value DOUBLE PRECISION NOT NULL,
+    exchange TEXT NOT NULL DEFAULT 'binance',
+    event_time TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_liq_events_symbol_time ON liquidation_events(symbol, event_time);
+
 -- Seed events (idempotent)
 INSERT INTO events (name, description, category) VALUES
     ('altura_metric_alert', 'Alert when Altura metrics', 'altura'),

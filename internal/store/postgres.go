@@ -298,3 +298,122 @@ func (s *Store) CountLinkedUsers(ctx context.Context) (int, error) {
 	err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM telegram_users WHERE linked = true`).Scan(&count)
 	return count, err
 }
+
+// --- Liquidation Events ---
+
+// LiquidationEvent represents a single forced liquidation from an exchange.
+type LiquidationEvent struct {
+	Symbol    string
+	Side      string // "LONG" or "SHORT" (which side got liquidated)
+	Price     float64
+	Quantity  float64
+	USDValue  float64
+	Exchange  string
+	EventTime time.Time
+}
+
+// InsertLiquidationEvent stores a liquidation event.
+func (s *Store) InsertLiquidationEvent(ctx context.Context, e *LiquidationEvent) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO liquidation_events (symbol, side, price, quantity, usd_value, exchange, event_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		e.Symbol, e.Side, e.Price, e.Quantity, e.USDValue, e.Exchange, e.EventTime)
+	return err
+}
+
+// InsertLiquidationEvents batch-inserts liquidation events.
+func (s *Store) InsertLiquidationEvents(ctx context.Context, events []LiquidationEvent) error {
+	if len(events) == 0 {
+		return nil
+	}
+	// Use a single transaction for batch efficiency
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	for _, e := range events {
+		_, err := tx.Exec(ctx, `
+			INSERT INTO liquidation_events (symbol, side, price, quantity, usd_value, exchange, event_time)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			e.Symbol, e.Side, e.Price, e.Quantity, e.USDValue, e.Exchange, e.EventTime)
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+// MaxPainResult holds the calculated max pain price for one side.
+type MaxPainResult struct {
+	PriceBin float64
+	USDTotal float64
+}
+
+// QueryMaxPain calculates the liquidation max pain for a symbol and time window.
+// binSize: price bin width (e.g., 100 for BTC, 10 for ETH).
+// Returns (longMaxPain, shortMaxPain, error).
+func (s *Store) QueryMaxPain(ctx context.Context, symbol string, window time.Duration, binSize float64) (*MaxPainResult, *MaxPainResult, error) {
+	since := time.Now().Add(-window)
+
+	var longMP MaxPainResult
+	err := s.pool.QueryRow(ctx, `
+		SELECT ROUND(price / $3) * $3 AS price_bin, SUM(usd_value) AS total
+		FROM liquidation_events
+		WHERE symbol = $1 AND event_time > $2 AND side = 'LONG'
+		GROUP BY price_bin
+		ORDER BY total DESC
+		LIMIT 1`, symbol, since, binSize).Scan(&longMP.PriceBin, &longMP.USDTotal)
+	if err != nil {
+		longMP = MaxPainResult{} // no data is ok
+	}
+
+	var shortMP MaxPainResult
+	err = s.pool.QueryRow(ctx, `
+		SELECT ROUND(price / $3) * $3 AS price_bin, SUM(usd_value) AS total
+		FROM liquidation_events
+		WHERE symbol = $1 AND event_time > $2 AND side = 'SHORT'
+		GROUP BY price_bin
+		ORDER BY total DESC
+		LIMIT 1`, symbol, since, binSize).Scan(&shortMP.PriceBin, &shortMP.USDTotal)
+	if err != nil {
+		shortMP = MaxPainResult{} // no data is ok
+	}
+
+	return &longMP, &shortMP, nil
+}
+
+// GetCurrentPrice returns the latest liquidation event price for a symbol (rough proxy for current price).
+func (s *Store) GetCurrentPrice(ctx context.Context, symbol string) (float64, error) {
+	var price float64
+	err := s.pool.QueryRow(ctx, `
+		SELECT price FROM liquidation_events
+		WHERE symbol = $1
+		ORDER BY event_time DESC
+		LIMIT 1`, symbol).Scan(&price)
+	return price, err
+}
+
+// CountLiquidationEvents returns event count for a symbol within a window.
+func (s *Store) CountLiquidationEvents(ctx context.Context, symbol string, window time.Duration) (int, error) {
+	var count int
+	err := s.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM liquidation_events
+		WHERE symbol = $1 AND event_time > $2`, symbol, time.Now().Add(-window)).Scan(&count)
+	return count, err
+}
+
+// CleanupOldLiquidationEvents deletes events older than the given duration.
+func (s *Store) CleanupOldLiquidationEvents(ctx context.Context, maxAge time.Duration) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `
+		DELETE FROM liquidation_events WHERE event_time < $1`, time.Now().Add(-maxAge))
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// Pool exposes the underlying connection pool for use by other packages.
+func (s *Store) Pool() *pgxpool.Pool {
+	return s.pool
+}

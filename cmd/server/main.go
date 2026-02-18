@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/web3-frozen/onchain-monitor/internal/collector"
 	"github.com/web3-frozen/onchain-monitor/internal/config"
 	"github.com/web3-frozen/onchain-monitor/internal/dedup"
 	"github.com/web3-frozen/onchain-monitor/internal/handler"
@@ -76,10 +77,12 @@ func main() {
 	engine.Register(sources.NewAltura())
 	engine.Register(sources.NewNeverland())
 	engine.Register(sources.NewFearGreed())
-	engine.Register(sources.NewMaxPain(logger))
+	engine.Register(sources.NewMaxPain(logger, db))
 	engine.Register(sources.NewMerkl())
 
 	// Start background goroutines
+	liqCollector := collector.New(db, logger)
+	go liqCollector.Run(ctx)
 	go bot.Run(ctx)
 	go engine.Run(ctx)
 
