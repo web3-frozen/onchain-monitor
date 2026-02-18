@@ -223,6 +223,12 @@ func (m *MaxPain) scrapeIntervals(intervals []string) (map[string][]monitor.MaxP
 			continue
 		}
 
+		if len(entries) == 0 {
+			var debugHTML string
+			_ = chromedp.Run(ctx, chromedp.Evaluate(`document.querySelector('table') ? document.querySelector('table').outerHTML.substring(0, 2000) : 'NO TABLE FOUND'`, &debugHTML))
+			m.logger.Warn("maxpain table empty", "interval", iv, "table_html", debugHTML)
+		}
+
 		result[iv] = entries
 		m.logger.Info("scraped maxpain data", "interval", iv, "coins", len(entries))
 	}
