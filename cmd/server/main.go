@@ -82,6 +82,7 @@ func main() {
 	engine.Register(sources.NewMerkl(logger))
 	engine.Register(sources.NewTurtle(logger))
 	engine.Register(sources.NewBinance())
+	engine.Register(sources.NewAlpha())
 
 	// HTTP routes
 	r := chi.NewRouter()

@@ -271,6 +271,9 @@ func (e *Engine) pollAll(ctx context.Context) {
 	// Check turtle yield opportunity alerts
 	e.checkTurtleAlerts(ctx)
 
+	// Check Alpha airdrops
+	e.checkAlphaAirdrops(ctx)
+
 	// Check Binance price alerts
 	e.checkBinancePriceAlerts(ctx)
 }
