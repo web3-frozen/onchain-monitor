@@ -560,7 +560,7 @@ func (e *Engine) checkTurtleAlerts(ctx context.Context) {
 	}
 
 	type oppGetter interface {
-		GetFilteredOpportunities(minAPR, minTVL float64, action, stableFilter string) []TurtleOpp
+		GetFilteredOpportunities(minAPR, minTVL float64, tagFilter, tokenFilter string) []TurtleOpp
 	}
 
 	getter, ok := turtleSrc.(oppGetter)
@@ -577,16 +577,16 @@ func (e *Engine) checkTurtleAlerts(ctx context.Context) {
 		if minTVL <= 0 {
 			minTVL = 1_000_000
 		}
-		action := strings.ToUpper(sub.Coin)
-		if action == "" {
-			action = "ALL"
+		tagFilter := sub.Coin
+		if tagFilter == "" {
+			tagFilter = "ALL"
 		}
-		stableFilter := sub.Direction
-		if stableFilter == "" {
-			stableFilter = "any"
+		tokenFilter := sub.Direction
+		if tokenFilter == "" {
+			tokenFilter = "all"
 		}
 
-		opps := getter.GetFilteredOpportunities(minAPR, minTVL, action, stableFilter)
+		opps := getter.GetFilteredOpportunities(minAPR, minTVL, tagFilter, tokenFilter)
 
 		var newOpps []TurtleOpp
 		for _, opp := range opps {

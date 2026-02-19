@@ -112,6 +112,65 @@ var stableSymbols = map[string]bool{
 	"USDT0": true, "USD₮0": true, "USDE": true, "USP": true, "USDA": true,
 	"EUSD": true, "CUSD": true, "CRVUSD": true, "DOLA": true, "SUSD": true,
 	"USDS": true, "AUSD": true, "MUSD": true, "USDAI": true, "SUSDE": true,
+	"BYUSD": true, "CUSDO": true, "FDUSD": true, "FRXUSD": true, "FXUSD": true,
+	"LISUSD": true, "MSUSD": true, "PMCRVUSD": true, "PMFRXUSD": true, "REUSD": true,
+	"RLUSD": true, "RUSD": true, "RUSDC": true, "SAVUSD": true, "SDAI": true,
+	"SRUSD": true, "STCUSD": true, "SUSDAI": true, "SUSDF": true, "SUSDS": true,
+	"SYRUPUSDC": true, "SYRUPUSDT": true, "SYZUSD": true, "USD0": true, "USD0++": true,
+	"USD1": true, "USDAF": true, "USDBC": true, "USDCV": true, "USDF": true,
+	"USDG": true, "USDH": true, "USDHL": true, "USDQ": true, "USDR": true,
+	"USDTB": true, "USDU": true, "VBUSDC": true, "VBUSDT": true, "WSRUSD": true,
+	"YOUSD": true, "YUSD": true, "YZUSD": true, "M.USDC": true, "M.USDT": true,
+}
+
+var btcSymbols = map[string]bool{
+	"BTC": true, "WBTC": true, "BTC.B": true, "BTCB": true, "BTCK": true,
+	"CBBTC": true, "EBTC": true, "FBTC": true, "KBTC": true, "LBTC": true,
+	"MBTC": true, "MEVBTC": true, "TBTC": true, "VBWBTC": true,
+}
+
+var ethSymbols = map[string]bool{
+	"ETH": true, "WETH": true, "STETH": true, "WSTETH": true, "RETH": true,
+	"CBETH": true, "EZETH": true, "WEETH": true, "PUFETH": true, "RSETH": true,
+	"RSWETH": true, "OSETH": true, "ETHX": true, "MSETH": true, "PZETH": true,
+	"TETH": true, "UETH": true, "VBWETH": true, "WRSETH": true, "YNETHX": true,
+	"YOETH": true, "BERAETH": true,
+}
+
+// IsBTC returns true if all deposit tokens are BTC variants.
+func (o *TurtleOpportunity) IsBTC() bool {
+	if len(o.DepositTokens) == 0 {
+		return false
+	}
+	for _, t := range o.DepositTokens {
+		if !btcSymbols[strings.ToUpper(t.Symbol)] {
+			return false
+		}
+	}
+	return true
+}
+
+// IsETH returns true if all deposit tokens are ETH variants.
+func (o *TurtleOpportunity) IsETH() bool {
+	if len(o.DepositTokens) == 0 {
+		return false
+	}
+	for _, t := range o.DepositTokens {
+		if !ethSymbols[strings.ToUpper(t.Symbol)] {
+			return false
+		}
+	}
+	return true
+}
+
+// HasTag returns true if the opportunity has the given tag code.
+func (o *TurtleOpportunity) HasTag(tag string) bool {
+	for _, t := range o.Tags {
+		if strings.EqualFold(t.Code, tag) {
+			return true
+		}
+	}
+	return false
 }
 
 type turtleResponse struct {
@@ -186,7 +245,9 @@ func (t *Turtle) GetOpportunities() []TurtleOpportunity {
 }
 
 // GetFilteredOpportunities fetches and filters opportunities for alert matching.
-func (t *Turtle) GetFilteredOpportunities(minAPR, minTVL float64, action, stableFilter string) []monitor.TurtleOpp {
+// tokenFilter: "stable", "btc", "eth", or "all" (deposit token type)
+// tagFilter: "ALL", or comma-separated tag codes like "lending,predeposit-vault"
+func (t *Turtle) GetFilteredOpportunities(minAPR, minTVL float64, tagFilter, tokenFilter string) []monitor.TurtleOpp {
 	opps, err := t.FetchAllOpportunities()
 	if err != nil {
 		t.logger.Error("turtle filter API failed", "error", err)
@@ -197,10 +258,18 @@ func (t *Turtle) GetFilteredOpportunities(minAPR, minTVL float64, action, stable
 
 	var result []monitor.TurtleOpp
 	for _, o := range filtered {
-		// Apply stablecoin filter
-		switch stableFilter {
-		case "stablecoin":
+		// Apply deposit token filter
+		switch tokenFilter {
+		case "stable", "stablecoin":
 			if !o.IsStablecoin() {
+				continue
+			}
+		case "btc":
+			if !o.IsBTC() {
+				continue
+			}
+		case "eth":
+			if !o.IsETH() {
 				continue
 			}
 		case "non-stablecoin":
@@ -208,12 +277,13 @@ func (t *Turtle) GetFilteredOpportunities(minAPR, minTVL float64, action, stable
 				continue
 			}
 		}
+		// "all" / "any" / "" → no token filter
 
-		// Apply type/action filter
-		if action != "" && action != "ALL" {
+		// Apply tag/category filter
+		if tagFilter != "" && !strings.EqualFold(tagFilter, "ALL") {
 			matched := false
-			for _, a := range strings.Split(action, ",") {
-				if strings.EqualFold(o.Type, strings.TrimSpace(a)) {
+			for _, tag := range strings.Split(tagFilter, ",") {
+				if o.HasTag(strings.TrimSpace(tag)) {
 					matched = true
 					break
 				}
