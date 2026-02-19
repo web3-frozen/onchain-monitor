@@ -1,6 +1,6 @@
 # Onchain Monitor — Backend
 
-A Go-based on-chain metrics monitoring API. Polls multiple DeFi data sources, collects real-time liquidation data from Binance, discovers yield opportunities via Merkl, sends configurable Telegram alerts, and delivers daily reports.
+A Go-based on-chain metrics monitoring API. Polls multiple DeFi data sources, collects real-time liquidation data from Binance, discovers yield opportunities via Merkl and Turtle, sends configurable Telegram alerts, and delivers daily reports.
 
 ## Architecture
 
@@ -31,6 +31,7 @@ A Go-based on-chain metrics monitoring API. Polls multiple DeFi data sources, co
 | **Fear & Greed** | Fear & Greed Index (0–100) | alternative.me API |
 | **Max Pain** | BTC/ETH Long & Short Max Pain prices | Self-built from Binance Futures WebSocket liquidations |
 | **Merkl** | Yield opportunities (APR, TVL, action) | Merkl v4 API (api.merkl.xyz) |
+| **Turtle** | Yield opportunities (yield, TVL, type) | Turtle API (api.turtle.xyz) |
 | **Binance** | BTC/USDT price (or any symbol) | Binance public ticker API |
 
 ### Adding a New Source
@@ -54,6 +55,7 @@ type Source interface {
 | **Metric alerts** | Fires on percentage change (increase/drop) over a configurable time window | Permanent until condition resets |
 | **Max Pain alerts** | Fires when current price is near liquidation max pain level | Permanent until condition resets |
 | **Merkl alerts** | Fires on new yield opportunities matching user's APR/TVL/action/stablecoin criteria | Permanent per opportunity per user |
+| **Turtle alerts** | Fires on new Turtle yield opportunities matching user's yield/TVL/type/stablecoin criteria | Permanent per opportunity per user |
 | **Binance price alerts** | Fires when a coin's price crosses a user-defined target (increase/decrease to X) | Permanent until condition resets |
 | **Daily reports** | Scheduled summary sent at configured hour (UTC+8) | Keyed by date (naturally unique) |
 
@@ -168,6 +170,7 @@ internal/
       feargreed.go          # Fear & Greed Index (alternative.me)
       maxpain.go            # Max Pain from Binance liquidation data
       merkl.go              # Merkl yield opportunities (API v4)
+      turtle.go             # Turtle yield opportunities (api.turtle.xyz)
       binance.go            # Binance price alerts (public ticker API)
   store/                    # PostgreSQL store + migrations
   telegram/                 # Telegram bot (long-polling, OTP linking)

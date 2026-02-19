@@ -4,7 +4,7 @@ This file provides context for AI coding agents (GitHub Copilot, etc.) working o
 
 ## Project Overview
 
-**Onchain Monitor** is a Go-based on-chain metrics monitoring backend. It polls multiple DeFi data sources, collects real-time liquidation data from Binance WebSocket, discovers yield opportunities via Merkl, sends configurable Telegram alerts, and delivers daily reports.
+**Onchain Monitor** is a Go-based on-chain metrics monitoring backend. It polls multiple DeFi data sources, collects real-time liquidation data from Binance WebSocket, discovers yield opportunities via Merkl and Turtle, sends configurable Telegram alerts, and delivers daily reports.
 
 ## Architecture
 
@@ -51,7 +51,7 @@ type Source interface {
 
 - **Engine** (`engine.go`) polls all sources every 60 seconds
 - Each poll compares current metrics against subscriber thresholds
-- Alert types: value_alert, metric_alert, maxpain, merkl, binance_price, daily_report
+- Alert types: value_alert, metric_alert, maxpain, merkl, turtle, binance_price, daily_report
 - **Dedup** is permanent (no TTL) and fail-closed (suppresses on Redis failure)
 - Dedup keys are cleared when the alert condition resets
 

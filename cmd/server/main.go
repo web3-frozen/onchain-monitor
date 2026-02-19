@@ -80,6 +80,7 @@ func main() {
 	engine.Register(sources.NewFearGreed())
 	engine.Register(sources.NewMaxPain(logger, db))
 	engine.Register(sources.NewMerkl(logger))
+	engine.Register(sources.NewTurtle(logger))
 	engine.Register(sources.NewBinance())
 
 	// HTTP routes

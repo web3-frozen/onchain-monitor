@@ -268,6 +268,9 @@ func (e *Engine) pollAll(ctx context.Context) {
 	// Check merkl yield opportunity alerts
 	e.checkMerklAlerts(ctx)
 
+	// Check turtle yield opportunity alerts
+	e.checkTurtleAlerts(ctx)
+
 	// Check Binance price alerts
 	e.checkBinancePriceAlerts(ctx)
 }
@@ -526,6 +529,123 @@ func (e *Engine) sendMerklGroupedAlert(chatID int64, opps []MerklOpp) {
 			names[i] = o.Name
 		}
 		e.logNotification(chatID, "merkl", "general_merkl_alert",
+			fmt.Sprintf("%d new opportunities: %s", len(opps), strings.Join(names, ", ")))
+	}
+}
+
+// TurtleOpp holds opportunity data for Turtle yield alerts.
+type TurtleOpp struct {
+	ID           string
+	Name         string
+	Type         string
+	TVL          float64
+	APR          float64
+	ChainName    string
+	Organization string
+	Token        string
+	TurtleURL    string
+	Stablecoin   bool
+}
+
+// checkTurtleAlerts checks for new Turtle yield opportunities matching subscriber criteria.
+func (e *Engine) checkTurtleAlerts(ctx context.Context) {
+	turtleSrc, ok := e.sources["turtle"]
+	if !ok {
+		return
+	}
+
+	subscribers, err := e.store.GetSubscribersWithThresholds(ctx, "general_turtle_alert")
+	if err != nil || len(subscribers) == 0 {
+		return
+	}
+
+	type oppGetter interface {
+		GetFilteredOpportunities(minAPR, minTVL float64, action, stableFilter string) []TurtleOpp
+	}
+
+	getter, ok := turtleSrc.(oppGetter)
+	if !ok {
+		return
+	}
+
+	for _, sub := range subscribers {
+		minAPR := sub.ThresholdValue
+		if minAPR <= 0 {
+			minAPR = 10
+		}
+		minTVL := sub.ThresholdPct * 1_000_000
+		if minTVL <= 0 {
+			minTVL = 1_000_000
+		}
+		action := strings.ToUpper(sub.Coin)
+		if action == "" {
+			action = "ALL"
+		}
+		stableFilter := sub.Direction
+		if stableFilter == "" {
+			stableFilter = "any"
+		}
+
+		opps := getter.GetFilteredOpportunities(minAPR, minTVL, action, stableFilter)
+
+		var newOpps []TurtleOpp
+		for _, opp := range opps {
+			alertKey := fmt.Sprintf("turtle:%d:%s", sub.ChatID, opp.ID)
+			if e.dedup.AlreadySent(ctx, alertKey) {
+				continue
+			}
+			newOpps = append(newOpps, opp)
+		}
+
+		if len(newOpps) == 0 {
+			continue
+		}
+
+		e.sendTurtleGroupedAlert(sub.ChatID, newOpps)
+
+		for _, opp := range newOpps {
+			alertKey := fmt.Sprintf("turtle:%d:%s", sub.ChatID, opp.ID)
+			e.dedup.Record(ctx, alertKey)
+		}
+	}
+}
+
+func (e *Engine) sendTurtleGroupedAlert(chatID int64, opps []TurtleOpp) {
+	sort.SliceStable(opps, func(i, j int) bool {
+		return opps[i].APR > opps[j].APR
+	})
+
+	var b strings.Builder
+	if len(opps) == 1 {
+		b.WriteString("🐢 New Turtle Yield Opportunity\n\n")
+	} else {
+		b.WriteString(fmt.Sprintf("🐢 %d New Turtle Yield Opportunities\n\n", len(opps)))
+	}
+
+	for i, opp := range opps {
+		stable := ""
+		if opp.Stablecoin {
+			stable = " 🟢"
+		}
+		b.WriteString(fmt.Sprintf("%d. %s%s\n", i+1, opp.Name, stable))
+		b.WriteString(fmt.Sprintf("   Yield: %.1f%% | TVL: $%s\n", opp.APR, formatMerklTVL(opp.TVL)))
+		b.WriteString(fmt.Sprintf("   %s · %s · %s\n", opp.ChainName, opp.Type, opp.Organization))
+		b.WriteString(fmt.Sprintf("   🔗 %s\n", opp.TurtleURL))
+		if i < len(opps)-1 {
+			b.WriteString("\n")
+		}
+	}
+
+	if err := e.alertFn(chatID, b.String()); err != nil {
+		metrics.AlertsFailedTotal.WithLabelValues("turtle", "turtle_alert").Inc()
+		e.logger.Error("send turtle alert failed", "chat_id", chatID, "error", err)
+	} else {
+		metrics.AlertsSentTotal.WithLabelValues("turtle", "turtle_alert").Inc()
+		names := make([]string, len(opps))
+		for i, o := range opps {
+			names[i] = o.Name
+		}
+		e.logNotification(chatID, "turtle", "general_turtle_alert",
 			fmt.Sprintf("%d new opportunities: %s", len(opps), strings.Join(names, ", ")))
 	}
 }
