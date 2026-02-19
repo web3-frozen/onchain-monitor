@@ -55,6 +55,24 @@ type Source interface {
 - **Dedup** is permanent (no TTL) and fail-closed (suppresses on Redis failure)
 - Dedup keys are cleared when the alert condition resets
 
+### Event Naming & Category Convention
+
+Events use the pattern `{category}_{type}` where:
+- `category` = project group (`general`, `altura`, `neverland`)
+- `type` = alert kind (`metric_alert`, `daily_report`, `maxpain_alert`, `merkl_alert`, `turtle_alert`, `binance_price_alert`)
+
+The frontend maps categories to chain names for display:
+| Category | Chain | Projects |
+|---|---|---|
+| `general` | General | Fear & Greed, MaxPain, Merkl, Turtle, Binance |
+| `altura` | Hyperliquid | Altura |
+| `neverland` | Monad | Neverland |
+
+**When adding a new source/event:**
+1. Seed the event in `internal/store/migrations.go` using the `{category}_{type}` naming
+2. The frontend must also be updated — add the event to `sourceLabels` in `EventCard.tsx` (see frontend repo's `.github/copilot-instructions.md`)
+3. Every event must have a visible source label in the UI so users can distinguish events within the same category
+
 ## Testing Patterns
 
 - **Pure functions**: Table-driven tests (see `engine_test.go`)
