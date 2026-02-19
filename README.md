@@ -172,10 +172,10 @@ scripts/
 
 ```bash
 # List keys for a chat ID (dry run)
-./scripts/clear-dedup.sh 123456789 --dry-run
+./scripts/clear-dedup.sh <chat_id> --dry-run
 
 # Delete all dedup keys for a chat ID
-./scripts/clear-dedup.sh 123456789
+./scripts/clear-dedup.sh <chat_id>
 ```
 
 ## License
