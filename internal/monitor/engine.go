@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	pollInterval   = 1 * time.Minute
-	maxHistoryLen  = 60 // keep 60 minutes of snapshots
+	pollInterval     = 1 * time.Minute
+	maxHistoryLen    = 60 // keep 60 minutes of snapshots
+	fetchTimeout     = 30 * time.Second
 )
 
 // AlertFunc sends a message to a Telegram chat.
@@ -133,10 +134,30 @@ func (e *Engine) refreshBusinessGauges(ctx context.Context) {
 	metrics.TelegramLinkedUsers.Set(float64(linkedCount))
 }
 
+// fetchWithTimeout wraps a FetchSnapshot call with a deadline so one slow
+// source cannot block the entire poll cycle.
+func fetchWithTimeout(fn func() (*Snapshot, error), timeout time.Duration) (*Snapshot, error) {
+	type result struct {
+		snap *Snapshot
+		err  error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		s, e := fn()
+		ch <- result{s, e}
+	}()
+	select {
+	case r := <-ch:
+		return r.snap, r.err
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("fetch timed out after %v", timeout)
+	}
+}
+
 func (e *Engine) pollAll(ctx context.Context) {
 	for name, src := range e.sources {
 		pollStart := time.Now()
-		snap, err := src.FetchSnapshot()
+		snap, err := fetchWithTimeout(src.FetchSnapshot, fetchTimeout)
 		pollDur := time.Since(pollStart).Seconds()
 		metrics.PollDuration.WithLabelValues(name).Observe(pollDur)
 

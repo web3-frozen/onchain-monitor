@@ -32,6 +32,8 @@ A Go-based on-chain metrics monitoring API. Polls multiple DeFi data sources, co
 | **Max Pain** | BTC/ETH Long & Short Max Pain prices | Self-built from Binance Futures WebSocket liquidations |
 | **Merkl** | Yield opportunities (APR, TVL, action) | Merkl v4 API (api.merkl.xyz) |
 
+| **Binance** | BTC/USDT price (or any symbol) | Binance public ticker API |
+
 ### Adding a New Source
 
 Implement the `Source` interface in `internal/monitor/sources/` and register it in `main.go`:
@@ -53,9 +55,16 @@ type Source interface {
 | **Metric alerts** | Fires on percentage change (increase/drop) over a configurable time window | Permanent until condition resets |
 | **Max Pain alerts** | Fires when current price is near liquidation max pain level | Permanent until condition resets |
 | **Merkl alerts** | Fires on new yield opportunities matching user's APR/TVL/action/stablecoin criteria | Permanent per opportunity per user |
+| **Binance price alerts** | Fires when a coin's price crosses a user-defined target (increase/decrease to X) | Permanent until condition resets |
 | **Daily reports** | Scheduled summary sent at configured hour (UTC+8) | Keyed by date (naturally unique) |
 
-All alerts use **fire-once semantics** — no TTL. Dedup keys are stored permanently in Redis and cleared only when the alert condition resets or the user unsubscribes.
+All alerts use **fire-once semantics** — no TTL. Dedup keys are stored permanently in Redis and cleared only when the alert condition resets or the user unsubscribes. Dedup is **fail-closed**: if Redis is unreachable, alerts are suppressed rather than re-fired.
+
+## Resilience
+
+- **Graceful shutdown** — all background goroutines (engine, telegram bot, liquidation collector) are managed via `errgroup`. On SIGINT/SIGTERM the context is cancelled, goroutines drain, and the HTTP server shuts down with a 30 s deadline.
+- **Source poll timeout** — each `FetchSnapshot()` call has a 30 s deadline. A single slow or hanging source cannot block the entire poll cycle.
+- **Dedup fail-closed** — if Redis is unreachable, `AlreadySent()` returns `true` to suppress duplicate alerts during downtime.
 
 ## API Endpoints
 
@@ -140,14 +149,14 @@ Deployed to Kubernetes via ArgoCD GitOps. CI/CD handled by GitHub Actions:
 ## Project Structure
 
 ```
-cmd/server/main.go          # Entry point — wires sources, engine, handlers
+cmd/server/main.go          # Entry point — wires sources, engine, handlers; errgroup lifecycle
 internal/
   collector/
     binance_ws.go           # Binance Futures WebSocket client (forceOrder streams)
     collector.go            # Orchestrator — manages WS connections, writes to Postgres
   config/                   # Environment + Infisical config loading
   dedup/
-    dedup.go                # Redis-backed alert deduplication (permanent, no TTL)
+    dedup.go                # Redis-backed alert deduplication (permanent, no TTL, fail-closed)
   handler/                  # HTTP handlers (events, stats, subscriptions, link)
   metrics/                  # Prometheus metrics registry
   middleware/               # CORS, logging, recovery, metrics
@@ -160,6 +169,7 @@ internal/
       feargreed.go          # Fear & Greed Index (alternative.me)
       maxpain.go            # Max Pain from Binance liquidation data
       merkl.go              # Merkl yield opportunities (API v4)
+      binance.go            # Binance price alerts (public ticker API)
   store/                    # PostgreSQL store + migrations
   telegram/                 # Telegram bot (long-polling, OTP linking)
 scripts/

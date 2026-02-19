@@ -20,6 +20,7 @@ import (
 	"github.com/web3-frozen/onchain-monitor/internal/monitor/sources"
 	"github.com/web3-frozen/onchain-monitor/internal/store"
 	"github.com/web3-frozen/onchain-monitor/internal/telegram"
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -81,12 +82,6 @@ func main() {
 	engine.Register(sources.NewMerkl(logger))
 	engine.Register(sources.NewBinance())
 
-	// Start background goroutines
-	liqCollector := collector.New(db, logger)
-	go liqCollector.Run(ctx)
-	go bot.Run(ctx)
-	go engine.Run(ctx)
-
 	// HTTP routes
 	r := chi.NewRouter()
 	r.Use(middleware.Recover(logger))
@@ -119,13 +114,29 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	go func() {
+	// Graceful lifecycle: all background goroutines tracked via errgroup
+	g, gCtx := errgroup.WithContext(ctx)
+
+	liqCollector := collector.New(db, logger)
+	g.Go(func() error { liqCollector.Run(gCtx); return nil })
+	g.Go(func() error { bot.Run(gCtx); return nil })
+	g.Go(func() error { engine.Run(gCtx); return nil })
+
+	g.Go(func() error {
 		logger.Info("server starting", "port", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("server failed", "error", err)
-			os.Exit(1)
+			return err
 		}
-	}()
+		return nil
+	})
+
+	// Shutdown server when context is cancelled
+	g.Go(func() error {
+		<-gCtx.Done()
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer shutdownCancel()
+		return srv.Shutdown(shutdownCtx)
+	})
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -133,7 +144,7 @@ func main() {
 
 	logger.Info("shutting down gracefully")
 	cancel()
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer shutdownCancel()
-	_ = srv.Shutdown(shutdownCtx)
+	if err := g.Wait(); err != nil {
+		logger.Error("shutdown error", "error", err)
+	}
 }
