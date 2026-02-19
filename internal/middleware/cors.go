@@ -1,11 +1,22 @@
 package middleware
 
-import "net/http"
+import (
+	"net/http"
+	"strings"
+)
 
+// CORS allows the configured origin plus any Vercel preview deployment.
 func CORS(origin string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
+			reqOrigin := r.Header.Get("Origin")
+			allowed := origin
+
+			if reqOrigin != "" && isAllowed(reqOrigin, origin) {
+				allowed = reqOrigin
+			}
+
+			w.Header().Set("Access-Control-Allow-Origin", allowed)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
@@ -17,4 +28,18 @@ func CORS(origin string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func isAllowed(reqOrigin, configured string) bool {
+	if configured == "*" {
+		return true
+	}
+	if reqOrigin == configured {
+		return true
+	}
+	// Allow Vercel preview deployments
+	if strings.HasSuffix(reqOrigin, ".vercel.app") {
+		return true
+	}
+	return false
 }
