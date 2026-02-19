@@ -31,7 +31,6 @@ A Go-based on-chain metrics monitoring API. Polls multiple DeFi data sources, co
 | **Fear & Greed** | Fear & Greed Index (0–100) | alternative.me API |
 | **Max Pain** | BTC/ETH Long & Short Max Pain prices | Self-built from Binance Futures WebSocket liquidations |
 | **Merkl** | Yield opportunities (APR, TVL, action) | Merkl v4 API (api.merkl.xyz) |
-
 | **Binance** | BTC/USDT price (or any symbol) | Binance public ticker API |
 
 ### Adding a New Source
