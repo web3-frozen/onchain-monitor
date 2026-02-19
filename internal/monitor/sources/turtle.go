@@ -83,9 +83,9 @@ func (o *TurtleOpportunity) OrganizationName() string {
 	return "Unknown"
 }
 
-// TurtleURL returns the link to the Turtle earn page.
+// TurtleURL returns the direct link to this opportunity on Turtle.
 func (o *TurtleOpportunity) TurtleURL() string {
-	return "https://app.turtle.xyz/earn/opportunities"
+	return "https://app.turtle.xyz/earn/opportunities/" + o.ID
 }
 
 // IsStablecoin returns true if all deposit tokens are stablecoins.
