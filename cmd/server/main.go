@@ -79,6 +79,7 @@ func main() {
 	engine.Register(sources.NewFearGreed())
 	engine.Register(sources.NewMaxPain(logger, db))
 	engine.Register(sources.NewMerkl(logger))
+	engine.Register(sources.NewBinance())
 
 	// Start background goroutines
 	liqCollector := collector.New(db, logger)

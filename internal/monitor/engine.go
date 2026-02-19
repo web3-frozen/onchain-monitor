@@ -246,6 +246,9 @@ func (e *Engine) pollAll(ctx context.Context) {
 
 	// Check merkl yield opportunity alerts
 	e.checkMerklAlerts(ctx)
+
+	// Check Binance price alerts
+	e.checkBinancePriceAlerts(ctx)
 }
 
 // checkMaxpainAlerts checks if current prices have crossed liquidation max pain levels.
@@ -503,6 +506,102 @@ func (e *Engine) sendMerklGroupedAlert(chatID int64, opps []MerklOpp) {
 		}
 		e.logNotification(chatID, "merkl", "general_merkl_alert",
 			fmt.Sprintf("%d new opportunities: %s", len(opps), strings.Join(names, ", ")))
+	}
+}
+
+// checkBinancePriceAlerts checks Binance prices against subscriber thresholds.
+func (e *Engine) checkBinancePriceAlerts(ctx context.Context) {
+	binanceSrc, ok := e.sources["binance"]
+	if !ok {
+		return
+	}
+
+	type priceFetcher interface {
+		FetchPrice(symbol string) (float64, error)
+	}
+	fetcher, ok := binanceSrc.(priceFetcher)
+	if !ok {
+		return
+	}
+
+	subscribers, err := e.store.GetSubscribersWithThresholds(ctx, "general_binance_price_alert")
+	if err != nil || len(subscribers) == 0 {
+		return
+	}
+
+	// Cache prices per symbol to avoid duplicate API calls
+	priceCache := make(map[string]float64)
+
+	for _, sub := range subscribers {
+		coin := strings.ToUpper(sub.Coin)
+		if coin == "" {
+			coin = "BTC"
+		}
+		if sub.ThresholdValue <= 0 {
+			continue
+		}
+
+		price, cached := priceCache[coin]
+		if !cached {
+			p, err := fetcher.FetchPrice(coin)
+			if err != nil {
+				e.logger.Warn("binance price fetch failed", "coin", coin, "error", err)
+				continue
+			}
+			price = p
+			priceCache[coin] = price
+		}
+
+		direction := strings.ToLower(sub.Direction)
+		var triggered bool
+		switch direction {
+		case "increase":
+			triggered = price >= sub.ThresholdValue
+		case "decrease":
+			triggered = price <= sub.ThresholdValue
+		default:
+			continue
+		}
+
+		alertKey := fmt.Sprintf("binance:%d:%s:%s:%.2f", sub.ChatID, coin, direction, sub.ThresholdValue)
+		if triggered {
+			if e.dedup.AlreadySent(ctx, alertKey) {
+				metrics.AlertsDeduplicatedTotal.WithLabelValues("binance", "binance_price_alert").Inc()
+				continue
+			}
+			e.sendBinancePriceAlert(sub.ChatID, binanceSrc, coin, price, sub.ThresholdValue, direction)
+			e.dedup.Record(ctx, alertKey)
+		} else {
+			e.dedup.Clear(ctx, alertKey)
+		}
+	}
+}
+
+func (e *Engine) sendBinancePriceAlert(chatID int64, src Source, coin string, price, targetPrice float64, direction string) {
+	dirLabel := "⬆️ INCREASE"
+	if direction == "decrease" {
+		dirLabel = "⬇️ DECREASE"
+	}
+	msg := fmt.Sprintf("🚨 %s/USDT PRICE %s ALERT\n\n"+
+		"%s has reached your target price!\n\n"+
+		"Current Price: $%s\n"+
+		"Target Price:  $%s\n"+
+		"Direction:     %s\n\n"+
+		"🔗 https://www.binance.com/en/trade/%s_USDT",
+		coin, dirLabel,
+		coin,
+		formatNum(price),
+		formatNum(targetPrice),
+		strings.ToUpper(direction),
+		coin)
+
+	if err := e.alertFn(chatID, msg); err != nil {
+		metrics.AlertsFailedTotal.WithLabelValues("binance", "binance_price_alert").Inc()
+		e.logger.Error("send binance price alert failed", "chat_id", chatID, "error", err)
+	} else {
+		metrics.AlertsSentTotal.WithLabelValues("binance", "binance_price_alert").Inc()
+		e.logNotification(chatID, "binance_price", "general_binance_price_alert",
+			fmt.Sprintf("%s/USDT %s to $%s (current: $%s)", coin, direction, formatNum(targetPrice), formatNum(price)))
 	}
 }
 

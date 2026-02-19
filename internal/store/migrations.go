@@ -74,7 +74,8 @@ INSERT INTO events (name, description, category) VALUES
     ('general_metric_alert', 'Alert when Fear & Greed Index', 'general'),
     ('general_daily_report', 'Daily UTC+8 report — Crypto Fear & Greed Index', 'general'),
     ('general_maxpain_alert', 'Alert when price hits liquidation max pain', 'general'),
-    ('general_merkl_alert', 'Alert on new Merkl yield opportunities', 'general')
+    ('general_merkl_alert', 'Alert on new Merkl yield opportunities', 'general'),
+    ('general_binance_price_alert', 'Alert when Binance price reaches target', 'general')
 ON CONFLICT (name) DO NOTHING;
 
 -- Notification log for debugging and audit trail
@@ -97,6 +98,7 @@ UPDATE events SET description = 'Alert when Fear & Greed Index' WHERE name = 'ge
 UPDATE events SET description = 'Daily UTC+8 report — Crypto Fear & Greed Index' WHERE name = 'general_daily_report';
 UPDATE events SET description = 'Alert when price hits liquidation max pain' WHERE name = 'general_maxpain_alert';
 UPDATE events SET description = 'Alert on new Merkl yield opportunities' WHERE name = 'general_merkl_alert';
+UPDATE events SET description = 'Alert when Binance price reaches target' WHERE name = 'general_binance_price_alert';
 `
 
 func (s *Store) Migrate(ctx context.Context) error {

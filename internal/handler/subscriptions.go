@@ -69,7 +69,7 @@ func Subscribe(s *store.Store) http.HandlerFunc {
 		if req.WindowMinutes <= 0 {
 			req.WindowMinutes = 1
 		}
-		validDirs := map[string]bool{"drop": true, "increase": true, "higher": true, "lower": true, "long": true, "short": true, "stablecoin": true, "non-stablecoin": true, "any": true}
+		validDirs := map[string]bool{"drop": true, "increase": true, "decrease": true, "higher": true, "lower": true, "long": true, "short": true, "stablecoin": true, "non-stablecoin": true, "any": true}
 		if !validDirs[req.Direction] {
 			req.Direction = "drop"
 		}
@@ -123,7 +123,7 @@ func UpdateSubscription(s *store.Store) http.HandlerFunc {
 		if req.WindowMinutes <= 0 {
 			req.WindowMinutes = 1
 		}
-		validDirs := map[string]bool{"drop": true, "increase": true, "higher": true, "lower": true, "long": true, "short": true, "stablecoin": true, "non-stablecoin": true, "any": true}
+		validDirs := map[string]bool{"drop": true, "increase": true, "decrease": true, "higher": true, "lower": true, "long": true, "short": true, "stablecoin": true, "non-stablecoin": true, "any": true}
 		if !validDirs[req.Direction] {
 			req.Direction = "drop"
 		}
