@@ -20,12 +20,14 @@ type binanceTickerResp struct {
 
 // Binance fetches cryptocurrency prices from the Binance public API.
 type Binance struct {
-	client *http.Client
+	client  *http.Client
+	baseURL string
 }
 
 func NewBinance() *Binance {
 	return &Binance{
-		client: &http.Client{Timeout: 10 * time.Second},
+		client:  &http.Client{Timeout: 10 * time.Second},
+		baseURL: binanceTickerAPI,
 	}
 }
 
@@ -38,7 +40,7 @@ func (b *Binance) URL() string   { return "https://www.binance.com/en/trade/" }
 // It pairs with USDT by default.
 func (b *Binance) FetchPrice(symbol string) (float64, error) {
 	pair := strings.ToUpper(symbol) + "USDT"
-	url := fmt.Sprintf("%s?symbol=%s", binanceTickerAPI, pair)
+	url := fmt.Sprintf("%s?symbol=%s", b.baseURL, pair)
 
 	resp, err := b.client.Get(url)
 	if err != nil {

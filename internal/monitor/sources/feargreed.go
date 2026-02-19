@@ -13,12 +13,14 @@ import (
 const fngAPI = "https://api.alternative.me/fng/"
 
 type FearGreed struct {
-	client *http.Client
+	client  *http.Client
+	baseURL string
 }
 
 func NewFearGreed() *FearGreed {
 	return &FearGreed{
-		client: &http.Client{Timeout: 15 * time.Second},
+		client:  &http.Client{Timeout: 15 * time.Second},
+		baseURL: fngAPI,
 	}
 }
 
@@ -34,7 +36,7 @@ type fngResponse struct {
 }
 
 func (f *FearGreed) FetchSnapshot() (*monitor.Snapshot, error) {
-	resp, err := f.client.Get(fngAPI)
+	resp, err := f.client.Get(f.baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("fear & greed API: %w", err)
 	}
