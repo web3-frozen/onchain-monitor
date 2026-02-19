@@ -102,6 +102,7 @@ UPDATE events SET description = 'Alert when price hits liquidation max pain' WHE
 UPDATE events SET description = 'Alert on new Merkl yield opportunities' WHERE name = 'general_merkl_alert';
 UPDATE events SET description = 'Alert when Binance price reaches target' WHERE name = 'general_binance_price_alert';
 UPDATE events SET description = 'Alert on new Turtle yield opportunities' WHERE name = 'general_turtle_alert';
+UPDATE events SET description = 'Alert on Alpha airdrops' WHERE name = 'general_alpha_alert';
 `
 
 func (s *Store) Migrate(ctx context.Context) error {
