@@ -189,4 +189,4 @@ scripts/
 
 ## License
 
-Private repository — all rights reserved.
+This project is licensed under the [MIT License](LICENSE).
