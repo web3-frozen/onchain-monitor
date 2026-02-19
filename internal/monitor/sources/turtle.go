@@ -263,12 +263,12 @@ func (t *Turtle) FetchSnapshot() (*monitor.Snapshot, error) {
 		Source: t.Name(),
 		Chain:  t.Chain(),
 		Metrics: map[string]float64{
-			"opportunities": float64(len(filtered)),
-			"top_yield":     topYield,
+			"turtle_opportunities": float64(len(filtered)),
+			"turtle_top_yield":     topYield,
 		},
 		DataSources: map[string]string{
-			"opportunities": "Turtle",
-			"top_yield":     "Turtle",
+			"turtle_opportunities": "Turtle",
+			"turtle_top_yield":     "Turtle",
 		},
 		FetchedAt: time.Now(),
 	}, nil

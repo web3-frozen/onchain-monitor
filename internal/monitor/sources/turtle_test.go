@@ -176,11 +176,11 @@ func TestTurtle_FetchSnapshot(t *testing.T) {
 		t.Errorf("Source = %q, want turtle", snap.Source)
 	}
 	// Only 1 opportunity passes filter (TVL >= 500K, yield >= 5%)
-	if snap.Metrics["opportunities"] != 1 {
-		t.Errorf("opportunities = %v, want 1", snap.Metrics["opportunities"])
+	if snap.Metrics["turtle_opportunities"] != 1 {
+		t.Errorf("turtle_opportunities = %v, want 1", snap.Metrics["turtle_opportunities"])
 	}
-	if snap.Metrics["top_yield"] != 12.5 {
-		t.Errorf("top_yield = %v, want 12.5", snap.Metrics["top_yield"])
+	if snap.Metrics["turtle_top_yield"] != 12.5 {
+		t.Errorf("turtle_top_yield = %v, want 12.5", snap.Metrics["turtle_top_yield"])
 	}
 }
 
