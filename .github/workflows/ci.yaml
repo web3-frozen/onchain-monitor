@@ -84,7 +84,7 @@ jobs:
       - name: Seed test user
         run: |
           PGPASSWORD=test psql -h localhost -U test -d onchain_monitor_test -c \
-            "INSERT INTO telegram_users (tg_chat_id, username, linked) VALUES (12345, 'test_user', true) ON CONFLICT DO NOTHING;"
+            "INSERT INTO telegram_users (tg_chat_id, tg_username, linked) VALUES (12345, 'test_user', true) ON CONFLICT DO NOTHING;"
 
       - name: Run integration tests
         run: ./scripts/integration-test.sh
