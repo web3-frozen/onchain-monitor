@@ -1,4 +1,4 @@
-.PHONY: build test lint run docker clean
+.PHONY: build test lint run docker clean up down integration-test
 
 # Binary name
 BINARY := onchain-monitor
@@ -29,6 +29,18 @@ lint:
 ## Build Docker image
 docker:
 	docker build -t $(BINARY) .
+
+## Start full stack (backend + frontend + postgres + redis)
+up:
+	docker compose up --build -d
+
+## Stop full stack
+down:
+	docker compose down
+
+## Run integration tests against running server (default: localhost:8080)
+integration-test:
+	./scripts/integration-test.sh
 
 ## Tidy dependencies
 tidy:

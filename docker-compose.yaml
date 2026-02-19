@@ -1,0 +1,66 @@
+# Local development / PR testing stack
+# Usage: docker compose up --build
+# Frontend: http://localhost:3000
+# Backend:  http://localhost:8080
+# Docs:     README.md#local-development
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: onchain
+      POSTGRES_PASSWORD: onchain
+      POSTGRES_DB: onchain_monitor
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U onchain"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://onchain:onchain@postgres:5432/onchain_monitor?sslmode=disable
+      REDIS_URL: redis:6379
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-0000000000:local-dev-token}"
+      PORT: "8080"
+      FRONTEND_ORIGIN: "*"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  frontend:
+    build: ../onchain-monitor-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata:

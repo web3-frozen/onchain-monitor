@@ -128,6 +128,33 @@ export REDIS_URL="redis://localhost:6379"
 go run ./cmd/server
 ```
 
+### Docker Compose (full stack)
+
+Spin up backend + frontend + PostgreSQL + Redis with one command:
+
+```bash
+# Start everything (frontend at :3000, backend at :8080)
+make up
+
+# Run integration tests against the local stack
+make integration-test
+
+# Stop everything
+make down
+```
+
+> **Note:** By default the Telegram bot uses a dummy token. Set `TELEGRAM_BOT_TOKEN` in your environment for real alerts.
+
+## Testing
+
+```bash
+make test                # Unit tests (Go race detector)
+make lint                # Linter
+make integration-test    # API integration tests against a running server
+```
+
+The integration test suite (`scripts/integration-test.sh`) validates all API endpoints against a live server — health checks, CRUD subscriptions, events, stats, notifications, CORS. It runs automatically in CI on every push and PR.
+
 ## Docker
 
 ```bash
@@ -176,6 +203,8 @@ internal/
   telegram/                 # Telegram bot (long-polling, OTP linking)
 scripts/
   clear-dedup.sh            # Clear Redis dedup keys for a specific chat ID
+  integration-test.sh       # API integration test suite (bash + curl + jq)
+docker-compose.yaml         # Full-stack local dev (backend + frontend + postgres + redis)
 ```
 
 ## Scripts
@@ -188,6 +217,16 @@ scripts/
 
 # Delete all dedup keys for a chat ID
 ./scripts/clear-dedup.sh <chat_id>
+```
+
+### Integration Tests
+
+```bash
+# Against local server (default: localhost:8080)
+./scripts/integration-test.sh
+
+# Against a custom URL
+BASE_URL=https://monitoring.dummysui.monster ./scripts/integration-test.sh
 ```
 
 ## License

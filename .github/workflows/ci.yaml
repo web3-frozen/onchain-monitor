@@ -23,11 +23,10 @@ jobs:
       go-version: "1.24"
     secrets: inherit
 
-  # ── Smoke Test ─────────────────────────────────────────────
-  smoke-test:
-    name: Smoke Test
+  # ── Integration Test ─────────────────────────────────────
+  integration-test:
+    name: Integration Test
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
     services:
       postgres:
         image: postgres:16-alpine
@@ -68,38 +67,22 @@ jobs:
         env:
           DATABASE_URL: postgres://test:test@localhost:5432/onchain_monitor_test?sslmode=disable
           REDIS_URL: localhost:6379
-          TELEGRAM_BOT_TOKEN: "0000000000:fake-token-for-smoke-test"
+          TELEGRAM_BOT_TOKEN: "0000000000:fake-token-for-integration-test"
           PORT: "8080"
           FRONTEND_ORIGIN: "*"
         run: |
           ./server &
           echo $! > /tmp/server.pid
-          # Wait for server to be ready
           for i in $(seq 1 30); do
             if curl -sf http://localhost:8080/healthz > /dev/null 2>&1; then
-              echo "Server is up"
+              echo "Server is ready"
               break
             fi
             sleep 1
           done
 
-      - name: Health check
-        run: |
-          echo "=== /healthz ==="
-          curl -sf http://localhost:8080/healthz | jq .
-          echo "=== /readyz ==="
-          curl -sf http://localhost:8080/readyz | jq .
-
-      - name: API smoke tests
-        run: |
-          echo "=== /api/stats ==="
-          curl -sf http://localhost:8080/api/stats | jq 'length'
-          echo "=== /api/stats/meta ==="
-          curl -sf http://localhost:8080/api/stats/meta | jq .
-          echo "=== /api/events ==="
-          curl -sf http://localhost:8080/api/events | jq 'length'
-          echo "=== /metrics (prometheus) ==="
-          curl -sf http://localhost:8080/metrics | head -5
+      - name: Run integration tests
+        run: ./scripts/integration-test.sh
 
       - name: Stop server
         if: always()
