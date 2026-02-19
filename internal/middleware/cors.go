@@ -37,10 +37,7 @@ func isAllowed(reqOrigin, configured string) bool {
 	if reqOrigin == configured {
 		return true
 	}
-	// Allow Vercel preview and production deployments for this project only
-	if reqOrigin == "https://onchain-monitor-frontend.vercel.app" {
-		return true
-	}
+	// Allow Vercel PR preview deployments for this project only
 	if strings.HasPrefix(reqOrigin, "https://onchain-monitor-frontend-") &&
 		strings.HasSuffix(reqOrigin, "-dummysuis-projects.vercel.app") {
 		return true
