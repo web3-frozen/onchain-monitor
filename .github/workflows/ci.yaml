@@ -66,7 +66,7 @@ jobs:
       - name: Start server
         env:
           DATABASE_URL: postgres://test:test@localhost:5432/onchain_monitor_test?sslmode=disable
-          REDIS_URL: localhost:6379
+          REDIS_URL: redis://localhost:6379
           TELEGRAM_BOT_TOKEN: "0000000000:fake-token-for-integration-test"
           PORT: "8080"
           FRONTEND_ORIGIN: "*"
