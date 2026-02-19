@@ -38,7 +38,7 @@ func TestFearGreedFetchSnapshot(t *testing.T) {
 			Value               string `json:"value"`
 			ValueClassification string `json:"value_classification"`
 		}{{Value: "42", ValueClassification: "Fear"}}}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -58,7 +58,7 @@ func TestFearGreedFetchSnapshot(t *testing.T) {
 func TestFearGreedFetchSnapshotEmpty(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := fngResponse{Data: nil}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 

@@ -32,14 +32,14 @@ func TestFetchPrice(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		symbol := r.URL.Query().Get("symbol")
 		if symbol == "BTCUSDT" {
-			json.NewEncoder(w).Encode(binanceTickerResp{Symbol: "BTCUSDT", Price: "95432.10"})
+			_ = json.NewEncoder(w).Encode(binanceTickerResp{Symbol: "BTCUSDT", Price: "95432.10"})
 			return
 		}
 		if symbol == "INVALIDUSDT" {
 			http.Error(w, "bad symbol", http.StatusBadRequest)
 			return
 		}
-		json.NewEncoder(w).Encode(binanceTickerResp{Symbol: symbol, Price: "3456.78"})
+		_ = json.NewEncoder(w).Encode(binanceTickerResp{Symbol: symbol, Price: "3456.78"})
 	}))
 	defer srv.Close()
 
@@ -72,7 +72,7 @@ func TestFetchPrice(t *testing.T) {
 
 func TestFetchSnapshot(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(binanceTickerResp{Symbol: "BTCUSDT", Price: "99000.50"})
+		_ = json.NewEncoder(w).Encode(binanceTickerResp{Symbol: "BTCUSDT", Price: "99000.50"})
 	}))
 	defer srv.Close()
 
