@@ -32,7 +32,7 @@ func TestAlphaFetchSnapshot(t *testing.T) {
 	}
 }
 
-func TestGetAirdrops(t *testing.T) {
+func TestAlphaGetAirdrops(t *testing.T) {
 	sample := `{"airdrops":[{"token":"JCT","date":"2026-02-19","time":"18:00","points":242,"name":"Alpha Box"}]}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

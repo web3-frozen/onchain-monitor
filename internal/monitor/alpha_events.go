@@ -17,7 +17,7 @@ type AlphaAirdrop struct {
 }
 
 // checkAlphaAirdrops queries the registered alpha source for current airdrops
-// and sends Telegram alerts to subscribers of the "general_alpha_airdrop" event.
+// and sends Telegram alerts to subscribers of the "general_alpha_alert" event.
 func (e *Engine) checkAlphaAirdrops(ctx context.Context) {
 	alphaSrc, ok := e.sources["alpha"]
 	if !ok {
@@ -38,7 +38,7 @@ func (e *Engine) checkAlphaAirdrops(ctx context.Context) {
 		return
 	}
 
-	chatIDs, err := e.store.GetSubscriberChatIDs(ctx, "general_alpha_airdrop")
+	chatIDs, err := e.store.GetSubscriberChatIDs(ctx, "general_alpha_alert")
 	if err != nil || len(chatIDs) == 0 {
 		return
 	}
@@ -59,7 +59,7 @@ func (e *Engine) checkAlphaAirdrops(ctx context.Context) {
 				continue
 			}
 			metrics.AlertsSentTotal.WithLabelValues("alpha", "alpha_airdrop").Inc()
-			e.logNotification(chatID, "alpha", "general_alpha_airdrop",
+			e.logNotification(chatID, "alpha", "general_alpha_alert",
 				fmt.Sprintf("%s on %s %s (%d points)", ad.Token, ad.Date, ad.Time, ad.Points))
 			e.dedup.Record(ctx, dedupKey)
 		}
