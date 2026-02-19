@@ -120,7 +120,7 @@ func (m *Merkl) GetFilteredOpportunities(minAPR, minTVL float64, action, stableF
 		stableParam = "&stablecoin=false"
 	}
 
-	url := fmt.Sprintf("%s?action=%s&minimumApr=%.0f&minimumTvl=%.0f&sort=apr&order=desc&items=50&status=LIVE%s",
+	url := fmt.Sprintf("%s?action=%s&minimumApr=%.0f&minimumTvl=%.0f&sort=apr&order=desc&status=LIVE%s",
 		merklAPI, action, minAPR, minTVL, stableParam)
 
 	resp, err := m.client.Get(url)
@@ -159,7 +159,7 @@ func (m *Merkl) GetFilteredOpportunities(minAPR, minTVL float64, action, stableF
 
 // FetchOpportunities fetches opportunities from Merkl with given filters.
 func (m *Merkl) FetchOpportunities(minAPR, minTVL float64, action string) ([]MerklOpportunity, error) {
-	url := fmt.Sprintf("%s?action=%s&minimumApr=%.0f&minimumTvl=%.0f&sort=apr&order=desc&items=50&status=LIVE",
+	url := fmt.Sprintf("%s?action=%s&minimumApr=%.0f&minimumTvl=%.0f&sort=apr&order=desc&status=LIVE",
 		merklAPI, action, minAPR, minTVL)
 
 	resp, err := m.client.Get(url)
