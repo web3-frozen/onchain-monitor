@@ -96,6 +96,7 @@ func main() {
 
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/events", handler.ListEvents(db))
+		r.Get("/link/status", handler.LinkStatus(db))
 		r.Post("/link", handler.LinkTelegram(db))
 		r.Post("/unlink", handler.UnlinkTelegram(db))
 		r.Get("/subscriptions", handler.ListSubscriptions(db))
