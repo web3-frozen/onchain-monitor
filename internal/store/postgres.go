@@ -103,12 +103,8 @@ func (s *Store) LinkByCode(ctx context.Context, code string) (*TelegramUser, err
 }
 
 func (s *Store) UnlinkTelegram(ctx context.Context, chatID int64) error {
+	// Only mark as unlinked — preserve subscriptions so they restore on re-link
 	_, err := s.pool.Exec(ctx, `
-		DELETE FROM subscriptions WHERE tg_user_id = (SELECT id FROM telegram_users WHERE tg_chat_id = $1)`, chatID)
-	if err != nil {
-		return err
-	}
-	_, err = s.pool.Exec(ctx, `
 		UPDATE telegram_users SET linked = false WHERE tg_chat_id = $1`, chatID)
 	return err
 }
