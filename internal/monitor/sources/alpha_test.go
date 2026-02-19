@@ -4,11 +4,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/web3-frozen/onchain-monitor/internal/monitor"
 )
 
-func TestFetchSnapshot(t *testing.T) {
+func TestAlphaFetchSnapshot(t *testing.T) {
 	sample := `{"airdrops":[{"token":"JCT","date":"2026-02-19","time":"18:00","points":242,"name":"Alpha Box"},{"token":"ICNT","date":"2026-02-19","time":"18:00","points":242,"name":"Alpha Box"}]}`
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
