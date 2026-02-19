@@ -36,10 +36,14 @@ func (d *Deduplicator) Close() error {
 	return d.rdb.Close()
 }
 
-// AlreadySent returns true if key was recorded within the given TTL window.
+// AlreadySent returns true if key was recorded, or if Redis is unreachable
+// (fail-closed: assume sent to avoid duplicate alerts during Redis downtime).
 func (d *Deduplicator) AlreadySent(ctx context.Context, key string) bool {
 	exists, err := d.rdb.Exists(ctx, key).Result()
-	return err == nil && exists > 0
+	if err != nil {
+		return true // fail closed — suppress alerts when Redis is down
+	}
+	return exists > 0
 }
 
 // Record marks key as sent permanently (no expiry).
