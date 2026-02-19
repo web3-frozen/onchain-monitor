@@ -20,19 +20,20 @@ jobs:
 
       # Auto-approve patch & minor updates immediately.
       # Major updates are left for manual review.
+      # Use PAT so approval comes from repo owner (write access)
       - name: Approve PR
         if: steps.meta.outputs.update-type != 'version-update:semver-major'
         run: gh pr review --approve "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITOPS_TOKEN }}
 
       - name: Enable auto-merge (squash)
         if: steps.meta.outputs.update-type != 'version-update:semver-major'
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITOPS_TOKEN }}
 
       # Close major version bumps automatically with a comment
       - name: Close major updates
@@ -42,4 +43,4 @@ jobs:
           gh pr close "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITOPS_TOKEN }}
