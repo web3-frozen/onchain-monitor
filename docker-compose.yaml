@@ -1,8 +1,9 @@
 # Local development / PR testing stack
-# Usage: docker compose up --build
-# Frontend: http://localhost:3000
-# Backend:  http://localhost:8080
-# Docs:     README.md#local-development
+# Usage:
+#   docker compose up --build              # Backend only (use Vercel frontend or local npm dev)
+#   docker compose --profile full up --build  # Full stack (requires ../onchain-monitor-frontend)
+# Backend: http://localhost:8080
+# Frontend (full profile): http://localhost:3000
 
 services:
   postgres:
@@ -52,7 +53,10 @@ services:
       timeout: 3s
       retries: 5
 
+  # Optional: requires ../onchain-monitor-frontend to be cloned alongside this repo.
+  # Activate with: docker compose --profile full up --build
   frontend:
+    profiles: ["full"]
     build: ../onchain-monitor-frontend
     ports:
       - "3000:3000"

@@ -130,11 +130,14 @@ go run ./cmd/server
 
 ### Docker Compose (full stack)
 
-Spin up backend + frontend + PostgreSQL + Redis with one command:
+Spin up backend + PostgreSQL + Redis with one command:
 
 ```bash
-# Start everything (frontend at :3000, backend at :8080)
+# Backend + dependencies (backend at :8080)
 make up
+
+# Full stack with frontend (requires ../onchain-monitor-frontend cloned alongside)
+docker compose --profile full up --build
 
 # Run integration tests against the local stack
 make integration-test
