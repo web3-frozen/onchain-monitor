@@ -60,3 +60,49 @@ func TestAlphaGetAirdrops(t *testing.T) {
 		t.Errorf("name = %q, want Alpha Box", ads[0].Name)
 	}
 }
+
+func TestAlphaParseStringPoints(t *testing.T) {
+	sample := `{"airdrops":[{"token":"","date":"2026-02-20","time":"18:00","points":"251","name":""}]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(sample))
+	}))
+	defer srv.Close()
+
+	a := &Alpha{client: srv.Client(), baseURL: srv.URL}
+	_, err := a.FetchSnapshot()
+	if err != nil {
+		t.Fatalf("FetchSnapshot error: %v", err)
+	}
+
+	ads := a.GetAirdrops()
+	if len(ads) != 1 {
+		t.Fatalf("GetAirdrops len = %d, want 1", len(ads))
+	}
+	if ads[0].Points != 251 {
+		t.Errorf("points = %d, want 251", ads[0].Points)
+	}
+}
+
+func TestAlphaParseEmptyPoints(t *testing.T) {
+	sample := `{"airdrops":[{"token":"","date":"2026-02-20","time":"18:00","points":"","name":""}]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(sample))
+	}))
+	defer srv.Close()
+
+	a := &Alpha{client: srv.Client(), baseURL: srv.URL}
+	_, err := a.FetchSnapshot()
+	if err != nil {
+		t.Fatalf("FetchSnapshot error: %v", err)
+	}
+
+	ads := a.GetAirdrops()
+	if len(ads) != 1 {
+		t.Fatalf("GetAirdrops len = %d, want 1", len(ads))
+	}
+	if ads[0].Points != 0 {
+		t.Errorf("points = %d, want 0", ads[0].Points)
+	}
+}
