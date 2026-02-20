@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -14,13 +15,13 @@ import (
 const alphaAPI = "https://alpha123.uk/api/data?fresh=1"
 
 type alphaAirdropResp struct {
-	Token            string `json:"token"`
-	Date             string `json:"date"`
-	Time             string `json:"time"`
-	Points           int    `json:"points"`
-	Type             string `json:"type"`
-	Name             string `json:"name"`
-	CreatedTimestamp int64  `json:"created_timestamp"`
+	Token            string          `json:"token"`
+	Date             string          `json:"date"`
+	Time             string          `json:"time"`
+	Points           json.RawMessage `json:"points"`
+	Type             string          `json:"type"`
+	Name             string          `json:"name"`
+	CreatedTimestamp int64           `json:"created_timestamp"`
 }
 
 type alphaResp struct {
@@ -64,16 +65,32 @@ func (a *Alpha) FetchSnapshot() (*monitor.Snapshot, error) {
 	var ads []monitor.AlphaAirdrop
 	topPoints := 0
 	for _, it := range body.Airdrops {
+		p := 0
+		if len(it.Points) > 0 {
+			b := it.Points
+			if b[0] == '"' {
+				var s string
+				_ = json.Unmarshal(b, &s)
+				if v, err := strconv.Atoi(s); err == nil {
+					p = v
+				}
+			} else {
+				if v, err := strconv.Atoi(string(b)); err == nil {
+					p = v
+				}
+			}
+		}
+
 		ad := monitor.AlphaAirdrop{
 			Token:  it.Token,
 			Date:   it.Date,
 			Time:   it.Time,
-			Points: it.Points,
+			Points: p,
 			Name:   it.Name,
 		}
 		ads = append(ads, ad)
-		if it.Points > topPoints {
-			topPoints = it.Points
+		if p > topPoints {
+			topPoints = p
 		}
 	}
 
