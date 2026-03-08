@@ -214,9 +214,9 @@ func TestDefiLlamaPool_ProjectDisplayName(t *testing.T) {
 }
 
 func TestDefiLlamaPool_DefiLlamaURL(t *testing.T) {
-	p := DefiLlamaPool{}
-	if got := p.DefiLlamaURL(); got != "https://defillama.com/yields" {
-		t.Errorf("DefiLlamaURL() = %q, want https://defillama.com/yields", got)
+	p := DefiLlamaPool{Pool: "abc-123"}
+	if got := p.DefiLlamaURL(); got != "https://defillama.com/yields/pool/abc-123" {
+		t.Errorf("DefiLlamaURL() = %q, want https://defillama.com/yields/pool/abc-123", got)
 	}
 }
 
@@ -381,8 +381,8 @@ func TestDefiLlama_GetFilteredPools(t *testing.T) {
 	if opps[0].Project != "Aave V3" {
 		t.Errorf("opps[0].Project = %q, want Aave V3", opps[0].Project)
 	}
-	if opps[0].URL != "https://defillama.com/yields" {
-		t.Errorf("opps[0].URL = %q, want https://defillama.com/yields", opps[0].URL)
+	if opps[0].URL != "https://defillama.com/yields/pool/1" {
+		t.Errorf("opps[0].URL = %q, want https://defillama.com/yields/pool/1", opps[0].URL)
 	}
 }
 
