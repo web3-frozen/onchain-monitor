@@ -148,8 +148,8 @@ func TestDefiLlama_FetchSnapshot(t *testing.T) {
 	data := defillamaResponse{
 		Status: "success",
 		Data: []DefiLlamaPool{
-			{Pool: "1", Symbol: "USDC", Chain: "Ethereum", Project: "aave-v3", APY: 4.5, TVLUsd: 1000000, Stablecoin: true},
-			{Pool: "2", Symbol: "USDT", Chain: "Ethereum", Project: "compound", APY: 3.2, TVLUsd: 500000, Stablecoin: true},
+			{Pool: "1", Symbol: "USDC", Chain: "Ethereum", Project: "aave-v3", APY: 4.5, TVLUsd: 2000000, Stablecoin: true},
+			{Pool: "2", Symbol: "USDT", Chain: "Ethereum", Project: "compound", APY: 3.2, TVLUsd: 1500000, Stablecoin: true},
 			{Pool: "3", Symbol: "ETH", Chain: "Ethereum", Project: "lido", APY: 2.0, TVLUsd: 10000000, Stablecoin: false},
 		},
 	}
@@ -381,9 +381,9 @@ func TestDefiLlama_FetchSnapshot_AllStableMetrics(t *testing.T) {
 	data := defillamaResponse{
 		Status: "success",
 		Data: []DefiLlamaPool{
-			{Pool: "1", Symbol: "USDC", Chain: "Ethereum", Project: "aave-v3", APY: 4.5, TVLUsd: 1000000, Stablecoin: true},
-			{Pool: "2", Symbol: "USDT", Chain: "Ethereum", Project: "compound", APY: 3.2, TVLUsd: 500000, Stablecoin: true},
-			{Pool: "3", Symbol: "DAI", Chain: "Ethereum", Project: "spark", APY: 6.0, TVLUsd: 2000000, Stablecoin: true},
+			{Pool: "1", Symbol: "USDC", Chain: "Ethereum", Project: "aave-v3", APY: 4.5, TVLUsd: 2000000, Stablecoin: true},
+			{Pool: "2", Symbol: "USDT", Chain: "Ethereum", Project: "compound", APY: 3.2, TVLUsd: 1500000, Stablecoin: true},
+			{Pool: "3", Symbol: "DAI", Chain: "Ethereum", Project: "spark", APY: 6.0, TVLUsd: 3000000, Stablecoin: true},
 			{Pool: "4", Symbol: "ETH", Chain: "Ethereum", Project: "lido", APY: 2.0, TVLUsd: 10000000, Stablecoin: false},
 		},
 	}
