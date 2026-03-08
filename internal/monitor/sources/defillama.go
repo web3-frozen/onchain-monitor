@@ -181,18 +181,18 @@ func (d *DefiLlama) FilterStablePools(pools []DefiLlamaPool, minAPY, minTVL floa
 			continue
 		}
 
-		// Filter by token type
+		// Filter by token type (always require stablecoin flag to exclude LP pairs like RECALL-USDC)
 		switch tokenFilter {
 		case "USDC":
-			if !p.IsUSDC() {
+			if !p.Stablecoin || !p.IsUSDC() {
 				continue
 			}
 		case "USDT":
-			if !p.IsUSDT() {
+			if !p.Stablecoin || !p.IsUSDT() {
 				continue
 			}
 		case "USDC_USDT":
-			if !p.IsUSDC() && !p.IsUSDT() {
+			if !p.Stablecoin || (!p.IsUSDC() && !p.IsUSDT()) {
 				continue
 			}
 		case "ALL_STABLES":
@@ -200,7 +200,6 @@ func (d *DefiLlama) FilterStablePools(pools []DefiLlamaPool, minAPY, minTVL floa
 				continue
 			}
 		default:
-			// For any other value, require stablecoin
 			if !p.Stablecoin {
 				continue
 			}

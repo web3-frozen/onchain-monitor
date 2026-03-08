@@ -127,6 +127,21 @@ func TestDefiLlama_FilterStablePools(t *testing.T) {
 	if len(result) > 1 && result[0].APY < result[1].APY {
 		t.Errorf("Results not sorted by APY descending")
 	}
+
+	// Test LP pairs with USDC/USDT in symbol are excluded (Stablecoin=false)
+	poolsWithLP := append(pools, DefiLlamaPool{
+		Pool: "6", Symbol: "RECALL-USDC", APY: 59969, TVLUsd: 500000, Stablecoin: false,
+	}, DefiLlamaPool{
+		Pool: "7", Symbol: "WETH-USDT", APY: 16000, TVLUsd: 600000, Stablecoin: false,
+	})
+	result = d.FilterStablePools(poolsWithLP, 3, 500000, "USDC_USDT", 7)
+	if len(result) != 3 {
+		t.Errorf("USDC_USDT filter with LP pairs: got %d pools, want 3 (LP pairs should be excluded)", len(result))
+	}
+	result = d.FilterStablePools(poolsWithLP, 3, 500000, "USDC", 7)
+	if len(result) != 2 {
+		t.Errorf("USDC filter with LP pairs: got %d pools, want 2 (RECALL-USDC should be excluded)", len(result))
+	}
 }
 
 func TestDefiLlama_FetchSnapshot(t *testing.T) {
