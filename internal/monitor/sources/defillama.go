@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/web3-frozen/onchain-monitor/internal/monitor"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 const defillamaAPI = "https://yields.llama.fi/pools?include=flexible"
@@ -110,8 +112,8 @@ func (p *DefiLlamaPool) IsUSDT() bool {
 func (p *DefiLlamaPool) ProjectDisplayName() string {
 	// Convert project slug to display name
 	name := strings.ReplaceAll(p.Project, "-", " ")
-	name = strings.Title(name)
-	return name
+	caser := cases.Title(language.English)
+	return caser.String(name)
 }
 
 // DefiLlamaURL returns the DeFi Llama yields page URL.
