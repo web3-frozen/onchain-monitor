@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -183,6 +184,296 @@ func TestDefiLlamaPool_ProjectDisplayName(t *testing.T) {
 			p := DefiLlamaPool{Project: tt.project}
 			if got := p.ProjectDisplayName(); got != tt.want {
 				t.Errorf("ProjectDisplayName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDefiLlamaPool_DefiLlamaURL(t *testing.T) {
+	p := DefiLlamaPool{}
+	if got := p.DefiLlamaURL(); got != "https://defillama.com/yields" {
+		t.Errorf("DefiLlamaURL() = %q, want https://defillama.com/yields", got)
+	}
+}
+
+func TestDefiLlama_NameChainURL(t *testing.T) {
+	d := NewDefiLlama(nil)
+	if d.Name() != "defillama" {
+		t.Errorf("Name() = %q, want defillama", d.Name())
+	}
+	if d.Chain() != "General" {
+		t.Errorf("Chain() = %q, want General", d.Chain())
+	}
+	if d.URL() != "https://defillama.com/yields" {
+		t.Errorf("URL() = %q, want https://defillama.com/yields", d.URL())
+	}
+}
+
+func TestDefiLlama_FetchAllPools(t *testing.T) {
+	data := defillamaResponse{
+		Status: "success",
+		Data: []DefiLlamaPool{
+			{Pool: "1", Symbol: "USDC", APY: 4.5, TVLUsd: 1000000, Stablecoin: true},
+			{Pool: "2", Symbol: "USDT", APY: 3.2, TVLUsd: 500000, Stablecoin: true},
+		},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(data)
+	}))
+	defer srv.Close()
+
+	d := NewDefiLlama(nil)
+	d.baseURL = srv.URL
+
+	pools, err := d.FetchAllPools()
+	if err != nil {
+		t.Fatalf("FetchAllPools() error: %v", err)
+	}
+	if len(pools) != 2 {
+		t.Errorf("got %d pools, want 2", len(pools))
+	}
+}
+
+func TestDefiLlama_FetchAllPools_ErrorStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	d := NewDefiLlama(nil)
+	d.baseURL = srv.URL
+
+	_, err := d.FetchAllPools()
+	if err == nil {
+		t.Fatal("expected error for 500 status")
+	}
+}
+
+func TestDefiLlama_FetchAllPools_NonSuccessStatus(t *testing.T) {
+	data := defillamaResponse{Status: "error"}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(data)
+	}))
+	defer srv.Close()
+
+	d := NewDefiLlama(nil)
+	d.baseURL = srv.URL
+
+	_, err := d.FetchAllPools()
+	if err == nil {
+		t.Fatal("expected error for non-success status")
+	}
+}
+
+func TestDefiLlama_FilterStablePools_EmptyPools(t *testing.T) {
+	d := NewDefiLlama(nil)
+	result := d.FilterStablePools(nil, 3, 500000, "USDC", 7)
+	if len(result) != 0 {
+		t.Errorf("expected empty result, got %d", len(result))
+	}
+}
+
+func TestDefiLlama_FilterStablePools_MinAPY(t *testing.T) {
+	d := NewDefiLlama(nil)
+	pools := []DefiLlamaPool{
+		{Pool: "1", Symbol: "USDC", APY: 2.0, TVLUsd: 1000000, Stablecoin: true},
+		{Pool: "2", Symbol: "USDC", APY: 5.0, TVLUsd: 1000000, Stablecoin: true},
+	}
+	result := d.FilterStablePools(pools, 3, 500000, "USDC", 7)
+	if len(result) != 1 || result[0].Pool != "2" {
+		t.Errorf("expected only pool 2 (APY 5%%), got %d pools", len(result))
+	}
+}
+
+func TestDefiLlama_FilterStablePools_MinTVL(t *testing.T) {
+	d := NewDefiLlama(nil)
+	pools := []DefiLlamaPool{
+		{Pool: "1", Symbol: "USDC", APY: 5.0, TVLUsd: 100000, Stablecoin: true},
+		{Pool: "2", Symbol: "USDC", APY: 5.0, TVLUsd: 2000000, Stablecoin: true},
+	}
+	result := d.FilterStablePools(pools, 3, 500000, "USDC", 7)
+	if len(result) != 1 || result[0].Pool != "2" {
+		t.Errorf("expected only pool 2 (TVL 2M), got %d pools", len(result))
+	}
+}
+
+func TestDefiLlama_FilterStablePools_DefaultFilter(t *testing.T) {
+	d := NewDefiLlama(nil)
+	pools := []DefiLlamaPool{
+		{Pool: "1", Symbol: "USDC", APY: 5.0, TVLUsd: 1000000, Stablecoin: true},
+		{Pool: "2", Symbol: "ETH", APY: 5.0, TVLUsd: 1000000, Stablecoin: false},
+	}
+	// Unknown filter falls back to stablecoin check
+	result := d.FilterStablePools(pools, 3, 500000, "UNKNOWN", 7)
+	if len(result) != 1 || result[0].Pool != "1" {
+		t.Errorf("default filter should require stablecoin=true, got %d pools", len(result))
+	}
+}
+
+func TestDefiLlama_GetPools(t *testing.T) {
+	d := NewDefiLlama(nil)
+	d.pools = []DefiLlamaPool{
+		{Pool: "1", Symbol: "USDC"},
+		{Pool: "2", Symbol: "USDT"},
+	}
+	pools := d.GetPools()
+	if len(pools) != 2 {
+		t.Errorf("GetPools() returned %d, want 2", len(pools))
+	}
+	// Verify it returns a copy
+	pools[0].Symbol = "MODIFIED"
+	if d.pools[0].Symbol == "MODIFIED" {
+		t.Error("GetPools() should return a copy, not a reference")
+	}
+}
+
+func TestDefiLlama_GetFilteredPools(t *testing.T) {
+	data := defillamaResponse{
+		Status: "success",
+		Data: []DefiLlamaPool{
+			{Pool: "1", Symbol: "USDC", Chain: "Ethereum", Project: "aave-v3", APY: 5.0, TVLUsd: 2000000, Stablecoin: true},
+			{Pool: "2", Symbol: "USDT", Chain: "Ethereum", Project: "compound", APY: 3.0, TVLUsd: 1000000, Stablecoin: true},
+			{Pool: "3", Symbol: "ETH", Chain: "Ethereum", Project: "lido", APY: 8.0, TVLUsd: 5000000, Stablecoin: false},
+		},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(data)
+	}))
+	defer srv.Close()
+
+	d := NewDefiLlama(nil)
+	d.baseURL = srv.URL
+
+	opps := d.GetFilteredPools(3, 500000, "USDC_USDT", 7)
+	if len(opps) != 2 {
+		t.Errorf("GetFilteredPools() returned %d, want 2", len(opps))
+	}
+	// Verify DefiLlamaOpp fields
+	if opps[0].Project != "Aave V3" {
+		t.Errorf("opps[0].Project = %q, want Aave V3", opps[0].Project)
+	}
+	if opps[0].URL != "https://defillama.com/yields" {
+		t.Errorf("opps[0].URL = %q, want https://defillama.com/yields", opps[0].URL)
+	}
+}
+
+func TestDefiLlama_FetchSnapshot_AllStableMetrics(t *testing.T) {
+	data := defillamaResponse{
+		Status: "success",
+		Data: []DefiLlamaPool{
+			{Pool: "1", Symbol: "USDC", Chain: "Ethereum", Project: "aave-v3", APY: 4.5, TVLUsd: 1000000, Stablecoin: true},
+			{Pool: "2", Symbol: "USDT", Chain: "Ethereum", Project: "compound", APY: 3.2, TVLUsd: 500000, Stablecoin: true},
+			{Pool: "3", Symbol: "DAI", Chain: "Ethereum", Project: "spark", APY: 6.0, TVLUsd: 2000000, Stablecoin: true},
+			{Pool: "4", Symbol: "ETH", Chain: "Ethereum", Project: "lido", APY: 2.0, TVLUsd: 10000000, Stablecoin: false},
+		},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(data)
+	}))
+	defer srv.Close()
+
+	d := NewDefiLlama(nil)
+	d.baseURL = srv.URL
+
+	snap, err := d.FetchSnapshot()
+	if err != nil {
+		t.Fatalf("FetchSnapshot() error: %v", err)
+	}
+
+	// USDC/USDT metrics
+	if snap.Metrics["usdc_max_apy"] != 4.5 {
+		t.Errorf("usdc_max_apy = %v, want 4.5", snap.Metrics["usdc_max_apy"])
+	}
+	if snap.Metrics["usdt_max_apy"] != 3.2 {
+		t.Errorf("usdt_max_apy = %v, want 3.2", snap.Metrics["usdt_max_apy"])
+	}
+	if snap.Metrics["usdc_pools"] != 1 {
+		t.Errorf("usdc_pools = %v, want 1", snap.Metrics["usdc_pools"])
+	}
+	if snap.Metrics["usdt_pools"] != 1 {
+		t.Errorf("usdt_pools = %v, want 1", snap.Metrics["usdt_pools"])
+	}
+	if snap.Metrics["total_pools"] != 2 {
+		t.Errorf("total_pools = %v, want 2", snap.Metrics["total_pools"])
+	}
+
+	// All-stable metrics (USDC + USDT + DAI = 3 pools, max APY = DAI 6.0%)
+	if snap.Metrics["all_stable_max_apy"] != 6.0 {
+		t.Errorf("all_stable_max_apy = %v, want 6.0", snap.Metrics["all_stable_max_apy"])
+	}
+	if snap.Metrics["all_stable_pools"] != 3 {
+		t.Errorf("all_stable_pools = %v, want 3", snap.Metrics["all_stable_pools"])
+	}
+
+	// Verify data sources
+	if snap.DataSources["all_stable_max_apy"] != "DeFi Llama" {
+		t.Errorf("all_stable_max_apy data source = %q, want DeFi Llama", snap.DataSources["all_stable_max_apy"])
+	}
+}
+
+func TestDefiLlama_FetchDailyReport(t *testing.T) {
+	d := NewDefiLlama(nil)
+	d.pools = []DefiLlamaPool{
+		{Pool: "1", Symbol: "USDC", Chain: "Ethereum", Project: "aave-v3", APY: 5.0, TVLUsd: 2000000, Stablecoin: true},
+		{Pool: "2", Symbol: "USDT", Chain: "BSC", Project: "venus", APY: 3.0, TVLUsd: 1000000, Stablecoin: true, PoolMeta: strPtr("7 days unstaking")},
+	}
+
+	report, err := d.FetchDailyReport()
+	if err != nil {
+		t.Fatalf("FetchDailyReport() error: %v", err)
+	}
+	if !strings.Contains(report, "DeFi Llama USDC/USDT Yields Report") {
+		t.Error("report missing header")
+	}
+	if !strings.Contains(report, "Aave V3") {
+		t.Error("report missing Aave V3")
+	}
+	if !strings.Contains(report, "Venus") {
+		t.Error("report missing Venus")
+	}
+	if !strings.Contains(report, "✅ Immediate") {
+		t.Error("report missing immediate withdrawal indicator")
+	}
+	if !strings.Contains(report, "⏱️ 7d") {
+		t.Error("report missing 7d withdrawal indicator")
+	}
+	if !strings.Contains(report, "Total: 2 USDC/USDT pools tracked") {
+		t.Error("report missing pool count")
+	}
+}
+
+func TestDefiLlama_FetchDailyReport_Empty(t *testing.T) {
+	d := NewDefiLlama(nil)
+	_, err := d.FetchDailyReport()
+	if err == nil {
+		t.Fatal("expected error for empty pools")
+	}
+}
+
+func TestDefiLlamaPool_WithdrawalDays_WordBoundary(t *testing.T) {
+	// Regression: "100daily" should not match as "100d"
+	tests := []struct {
+		name     string
+		poolMeta *string
+		want     int
+	}{
+		{"100daily should not match", strPtr("100daily rewards"), 0},
+		{"100d withdrawal should match", strPtr("100d withdrawal"), 100},
+		{"5d at end of string", strPtr("5d"), 5},
+		{"10d followed by space", strPtr("10d lockup"), 10},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := DefiLlamaPool{PoolMeta: tt.poolMeta}
+			if got := p.WithdrawalDays(); got != tt.want {
+				t.Errorf("WithdrawalDays() = %v, want %v", got, tt.want)
 			}
 		})
 	}
