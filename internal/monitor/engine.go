@@ -1008,8 +1008,9 @@ func (e *Engine) checkDefiLlamaAlerts(ctx context.Context) {
 
 		var newPools []DefiLlamaOpp
 		for _, pool := range pools {
-			// Use pool ID + APY bucket for dedup to avoid spam on minor APY changes
-			apyBucket := int(pool.APY * 10) // 0.1% granularity
+			// Use pool ID + APY bucket for dedup — 1% granularity to avoid
+			// re-alerting on minor APY fluctuations (e.g. 17.49% → 17.50%)
+			apyBucket := int(pool.APY)
 			alertKey := fmt.Sprintf("defillama:%d:%s:%d", sub.ChatID, pool.Pool, apyBucket)
 			if e.dedup.AlreadySent(ctx, alertKey) {
 				continue
@@ -1030,7 +1031,7 @@ func (e *Engine) checkDefiLlamaAlerts(ctx context.Context) {
 
 		// Record dedup keys for sent alerts
 		for _, pool := range newPools {
-			apyBucket := int(pool.APY * 10)
+			apyBucket := int(pool.APY)
 			alertKey := fmt.Sprintf("defillama:%d:%s:%d", sub.ChatID, pool.Pool, apyBucket)
 			e.dedup.Record(ctx, alertKey)
 		}
