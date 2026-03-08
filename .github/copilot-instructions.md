@@ -111,6 +111,21 @@ make run        # Run locally
 4. **Permanent dedup keys**: No TTL; keys cleared only when condition resets or user unsubscribes
 5. **Source interface has no context**: `FetchSnapshot()` doesn't take `context.Context`; timeout is enforced externally via goroutine+channel pattern in `fetchWithTimeout()`
 
+## Testing Policy
+
+**IMPORTANT: Every code change must include corresponding test updates and verification.**
+
+1. **Before committing any change**, run `make test` to ensure all existing tests pass
+2. **When adding or modifying source code**, add or update unit tests in the corresponding `*_test.go` file
+3. **When adding a new source** (`internal/monitor/sources/<name>.go`), create `<name>_test.go` with:
+   - Table-driven tests for all public functions
+   - `httptest.NewServer` mock for API calls using the `baseURL` pattern
+   - Edge cases: empty responses, API errors, invalid data, boundary values
+   - Regression tests for any known bugs
+4. **When modifying filter/business logic**, add regression tests that verify the fix and prevent reintroduction
+5. **Run `make lint`** before committing to catch style and correctness issues
+6. **CI runs `make lint` and `make test` on every PR** — ensure your changes pass locally first
+
 ## Documentation Update Policy
 
 **IMPORTANT: Every code change must include corresponding documentation updates.**
