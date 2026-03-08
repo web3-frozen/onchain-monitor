@@ -3,7 +3,7 @@ module github.com/web3-frozen/onchain-monitor
 go 1.24.0
 
 require (
-	github.com/alicebob/miniredis/v2 v2.36.1
+	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/coder/websocket v1.8.14
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/infisical/go-sdk v0.6.8
