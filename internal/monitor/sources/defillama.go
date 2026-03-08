@@ -322,7 +322,7 @@ func (d *DefiLlama) FetchSnapshot() (*monitor.Snapshot, error) {
 			"usdt_max_apy":       usdtMaxAPY,
 			"usdc_pools":         float64(usdcCount),
 			"usdt_pools":         float64(usdtCount),
-			"total_pools":        float64(len(filtered)),
+			"total_pools":        float64(usdcCount + usdtCount),
 			"all_stable_max_apy": allStableMaxAPY,
 			"all_stable_pools":   float64(len(allStableFiltered)),
 		},
