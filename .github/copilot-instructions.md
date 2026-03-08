@@ -51,7 +51,7 @@ type Source interface {
 
 - **Engine** (`engine.go`) polls all sources every 60 seconds
 - Each poll compares current metrics against subscriber thresholds
-- Alert types: value_alert, metric_alert, maxpain, merkl, turtle, binance_price, daily_report
+- Alert types: value_alert, metric_alert, maxpain, merkl, turtle, defillama, binance_price, daily_report
 - **Dedup** is permanent (no TTL) and fail-closed (suppresses on Redis failure)
 - Dedup keys are cleared when the alert condition resets
 
@@ -64,7 +64,7 @@ Events use the pattern `{category}_{type}` where:
 The frontend maps categories to chain names for display:
 | Category | Chain | Projects |
 |---|---|---|
-| `general` | General | Fear & Greed, MaxPain, Merkl, Turtle, Binance |
+| `general` | General | Fear & Greed, MaxPain, Merkl, Turtle, Binance, DeFi Llama |
 | `altura` | Hyperliquid | Altura |
 | `neverland` | Monad | Neverland |
 
@@ -110,3 +110,23 @@ make run        # Run locally
 3. **30s poll timeout**: Each source poll has a deadline to prevent one slow source from blocking all
 4. **Permanent dedup keys**: No TTL; keys cleared only when condition resets or user unsubscribes
 5. **Source interface has no context**: `FetchSnapshot()` doesn't take `context.Context`; timeout is enforced externally via goroutine+channel pattern in `fetchWithTimeout()`
+
+## Documentation Update Policy
+
+**IMPORTANT: Every code change must include corresponding documentation updates.**
+
+When reviewing PRs, always check and flag if any of the following are stale:
+
+1. **README.md** — Must reflect:
+   - All data sources in the "Data Sources" table
+   - All alert types in the "Alert Types" table
+   - All source files in the "Project Structure" tree
+   - Any new configuration variables in the "Configuration" table
+2. **CONTRIBUTING.md** — Must reflect any changes to the development workflow or tooling
+3. **`.github/copilot-instructions.md`** (this file) — Must reflect:
+   - New sources/events in the architecture overview and category mapping table
+   - New alert types in the Alert System section
+   - New testing patterns
+4. **`.github/copilot/architecture.md`** and **`.github/copilot/monitoring.md`** — Must reflect any architectural or observability changes
+
+**Rule**: If a PR adds/modifies a source, alert type, event, or API endpoint but does NOT update the corresponding documentation files, flag it as an issue in the review. Documentation must ship with the code change, not as a follow-up.
