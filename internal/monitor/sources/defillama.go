@@ -19,6 +19,13 @@ import (
 
 const defillamaAPI = "https://yields.llama.fi/pools?include=flexible"
 
+// Pre-compiled regex patterns for withdrawal day parsing
+var (
+	withdrawalDaysRe = regexp.MustCompile(`(\d+)\s*days?\s*(?:unstaking|lockup|lock|withdrawal)`)
+	withdrawalDRe    = regexp.MustCompile(`(\d+)d\s*(?:unstaking|lockup|lock|withdrawal)?`)
+	withdrawalWeeksRe = regexp.MustCompile(`(\d+)\s*weeks?\s*(?:unstaking|lockup|lock|withdrawal)`)
+)
+
 // DefiLlamaPool represents a single yield pool from DeFi Llama.
 type DefiLlamaPool struct {
 	Chain           string   `json:"chain"`
@@ -45,43 +52,24 @@ func (p *DefiLlamaPool) WithdrawalDays() int {
 
 	meta := strings.ToLower(*p.PoolMeta)
 
-	// Common patterns: "7 days unstaking", "7 day lockup", "7d lock", etc.
-	patterns := []struct {
-		re      *regexp.Regexp
-		extract func([]string) int
-	}{
-		{
-			re: regexp.MustCompile(`(\d+)\s*days?\s*(?:unstaking|lockup|lock|withdrawal)`),
-			extract: func(m []string) int {
-				if d, err := strconv.Atoi(m[1]); err == nil {
-					return d
-				}
-				return 0
-			},
-		},
-		{
-			re: regexp.MustCompile(`(\d+)d\s*(?:unstaking|lockup|lock|withdrawal)?`),
-			extract: func(m []string) int {
-				if d, err := strconv.Atoi(m[1]); err == nil {
-					return d
-				}
-				return 0
-			},
-		},
-		{
-			re: regexp.MustCompile(`(\d+)\s*weeks?\s*(?:unstaking|lockup|lock|withdrawal)`),
-			extract: func(m []string) int {
-				if w, err := strconv.Atoi(m[1]); err == nil {
-					return w * 7
-				}
-				return 0
-			},
-		},
+	// Check days pattern: "7 days unstaking", "7 day lockup", etc.
+	if matches := withdrawalDaysRe.FindStringSubmatch(meta); len(matches) > 1 {
+		if d, err := strconv.Atoi(matches[1]); err == nil {
+			return d
+		}
 	}
 
-	for _, pat := range patterns {
-		if matches := pat.re.FindStringSubmatch(meta); len(matches) > 1 {
-			return pat.extract(matches)
+	// Check short format: "7d", "7d lockup", etc.
+	if matches := withdrawalDRe.FindStringSubmatch(meta); len(matches) > 1 {
+		if d, err := strconv.Atoi(matches[1]); err == nil {
+			return d
+		}
+	}
+
+	// Check weeks pattern: "2 weeks unstaking", etc.
+	if matches := withdrawalWeeksRe.FindStringSubmatch(meta); len(matches) > 1 {
+		if w, err := strconv.Atoi(matches[1]); err == nil {
+			return w * 7
 		}
 	}
 

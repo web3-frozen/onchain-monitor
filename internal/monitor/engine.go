@@ -989,7 +989,7 @@ func (e *Engine) checkDefiLlamaAlerts(ctx context.Context) {
 			minTVL = 1_000_000
 		}
 		maxWithdrawDays := sub.WindowMinutes
-		if maxWithdrawDays < 0 {
+		if maxWithdrawDays <= 0 {
 			maxWithdrawDays = 7
 		}
 		tokenFilter := sub.Coin
