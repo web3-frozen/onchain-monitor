@@ -1062,13 +1062,13 @@ func (e *Engine) sendDefiLlamaGroupedAlert(chatID int64, pools []DefiLlamaOpp, m
 		b.WriteString(fmt.Sprintf("%d. %s - %s\n", i+1, pool.Project, pool.Symbol))
 		b.WriteString(fmt.Sprintf("   Chain: %s | APY: %.2f%%\n", pool.Chain, pool.APY))
 		b.WriteString(fmt.Sprintf("   TVL: $%s | %s\n", formatMerklTVL(pool.TVLUsd), withdrawalInfo))
+		b.WriteString(fmt.Sprintf("   🔗 %s\n", pool.URL))
 		if i < len(pools)-1 {
 			b.WriteString("\n")
 		}
 	}
 
 	b.WriteString(fmt.Sprintf("\n📋 Your filters: APY ≥%.1f%%, TVL ≥$%.0fM, ≤%dd withdrawal", minAPY, minTVLMil, maxDays))
-	b.WriteString("\n🔗 https://defillama.com/yields")
 
 	if err := e.alertFn(chatID, b.String()); err != nil {
 		metrics.AlertsFailedTotal.WithLabelValues("defillama", "defillama_alert").Inc()

@@ -117,9 +117,9 @@ func (p *DefiLlamaPool) ProjectDisplayName() string {
 	return caser.String(name)
 }
 
-// DefiLlamaURL returns the DeFi Llama yields page URL.
+// DefiLlamaURL returns the DeFi Llama pool detail page URL.
 func (p *DefiLlamaPool) DefiLlamaURL() string {
-	return "https://defillama.com/yields"
+	return "https://defillama.com/yields/pool/" + p.Pool
 }
 
 type defillamaResponse struct {
@@ -374,10 +374,10 @@ func (d *DefiLlama) FetchDailyReport() (string, error) {
 		b.WriteString(fmt.Sprintf("   Chain: %s | APY: %.2f%% | TVL: $%s\n",
 			p.Chain, p.APY, fmtTVL(p.TVLUsd)))
 		b.WriteString(fmt.Sprintf("   Withdrawal: %s\n", withdrawalInfo))
+		b.WriteString(fmt.Sprintf("   🔗 %s\n", p.DefiLlamaURL()))
 		b.WriteString("\n")
 	}
 
 	b.WriteString(fmt.Sprintf("Total: %d USDC/USDT pools tracked\n", len(pools)))
-	b.WriteString("🔗 https://defillama.com/yields")
 	return b.String(), nil
 }
