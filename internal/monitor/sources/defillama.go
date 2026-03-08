@@ -260,15 +260,17 @@ func (d *DefiLlama) FetchSnapshot() (*monitor.Snapshot, error) {
 		return nil, err
 	}
 
-	// Filter for stablecoins with APY > 0.1%, TVL > 100K, withdrawal <= 7 days
-	// This is for dashboard display
+	// Filter USDC/USDT pools for dashboard display
 	filtered := d.FilterStablePools(pools, 0.1, 100000, "USDC_USDT", 7)
+
+	// Filter all stablecoins for dashboard display
+	allStableFiltered := d.FilterStablePools(pools, 0.1, 100000, "ALL_STABLES", 7)
 
 	d.mu.Lock()
 	d.pools = filtered
 	d.mu.Unlock()
 
-	// Calculate metrics
+	// Calculate USDC/USDT metrics
 	var usdcMaxAPY, usdtMaxAPY float64
 	var usdcCount, usdtCount int
 
@@ -287,22 +289,34 @@ func (d *DefiLlama) FetchSnapshot() (*monitor.Snapshot, error) {
 		}
 	}
 
+	// Calculate all-stablecoin metrics
+	var allStableMaxAPY float64
+	for _, p := range allStableFiltered {
+		if p.APY > allStableMaxAPY {
+			allStableMaxAPY = p.APY
+		}
+	}
+
 	return &monitor.Snapshot{
 		Source: d.Name(),
 		Chain:  d.Chain(),
 		Metrics: map[string]float64{
-			"usdc_max_apy":  usdcMaxAPY,
-			"usdt_max_apy":  usdtMaxAPY,
-			"usdc_pools":    float64(usdcCount),
-			"usdt_pools":    float64(usdtCount),
-			"total_pools":   float64(len(filtered)),
+			"usdc_max_apy":       usdcMaxAPY,
+			"usdt_max_apy":       usdtMaxAPY,
+			"usdc_pools":         float64(usdcCount),
+			"usdt_pools":         float64(usdtCount),
+			"total_pools":        float64(len(filtered)),
+			"all_stable_max_apy": allStableMaxAPY,
+			"all_stable_pools":   float64(len(allStableFiltered)),
 		},
 		DataSources: map[string]string{
-			"usdc_max_apy":  "DeFi Llama",
-			"usdt_max_apy":  "DeFi Llama",
-			"usdc_pools":    "DeFi Llama",
-			"usdt_pools":    "DeFi Llama",
-			"total_pools":   "DeFi Llama",
+			"usdc_max_apy":       "DeFi Llama",
+			"usdt_max_apy":       "DeFi Llama",
+			"usdc_pools":         "DeFi Llama",
+			"usdt_pools":         "DeFi Llama",
+			"total_pools":        "DeFi Llama",
+			"all_stable_max_apy": "DeFi Llama",
+			"all_stable_pools":   "DeFi Llama",
 		},
 		FetchedAt: time.Now(),
 	}, nil
