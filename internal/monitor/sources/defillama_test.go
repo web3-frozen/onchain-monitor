@@ -46,7 +46,12 @@ func TestDefiLlamaPool_IsUSDC(t *testing.T) {
 	}{
 		{"USDC", true},
 		{"USDC.e", true},
-		{"aUSDC", true},
+		{"USDC-USDT", true},
+		{"WETH-USDC", true},
+		{"aUSDC", false},
+		{"IUSDC", false},
+		{"HALALUSDC", false},
+		{"COREUSDC", false},
 		{"USDT", false},
 		{"DAI", false},
 	}
@@ -67,7 +72,11 @@ func TestDefiLlamaPool_IsUSDT(t *testing.T) {
 	}{
 		{"USDT", true},
 		{"USDT0", true},
-		{"aUSDT", true},
+		{"USDC-USDT", true},
+		{"WETH-USDT", true},
+		{"aUSDT", false},
+		{"IUSDT", false},
+		{"HALALUSDT", false},
 		{"USDC", false},
 		{"DAI", false},
 	}

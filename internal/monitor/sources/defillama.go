@@ -85,16 +85,28 @@ func (p *DefiLlamaPool) WithdrawalDays() int {
 	return 0
 }
 
-// IsUSDC returns true if the symbol contains USDC.
+// IsUSDC returns true if the symbol is or contains USDC as a standalone token.
+// Splits on "-" to check individual tokens for exact match.
 func (p *DefiLlamaPool) IsUSDC() bool {
 	sym := strings.ToUpper(p.Symbol)
-	return strings.Contains(sym, "USDC")
+	for _, token := range strings.Split(sym, "-") {
+		if token == "USDC" || token == "USDC.E" {
+			return true
+		}
+	}
+	return false
 }
 
-// IsUSDT returns true if the symbol contains USDT.
+// IsUSDT returns true if the symbol is or contains USDT as a standalone token.
+// Splits on "-" to check individual tokens for exact match.
 func (p *DefiLlamaPool) IsUSDT() bool {
 	sym := strings.ToUpper(p.Symbol)
-	return strings.Contains(sym, "USDT")
+	for _, token := range strings.Split(sym, "-") {
+		if token == "USDT" || token == "USDT0" {
+			return true
+		}
+	}
+	return false
 }
 
 // ProjectDisplayName returns a formatted project name.
