@@ -77,7 +77,8 @@ INSERT INTO events (name, description, category) VALUES
     ('general_merkl_alert', 'Alert on new Merkl yield opportunities', 'general'),
     ('general_binance_price_alert', 'Alert when Binance price reaches target', 'general'),
     ('general_turtle_alert', 'Alert on new Turtle yield opportunities', 'general'),
-    ('general_alpha_alert', 'Alert on Binance Alpha airdrops', 'general')
+    ('general_alpha_alert', 'Alert on Binance Alpha airdrops', 'general'),
+    ('general_defillama_alert', 'Alert on DeFi Llama USDC/USDT yield opportunities', 'general')
 ON CONFLICT (name) DO NOTHING;
 
 -- Notification log for debugging and audit trail
@@ -103,6 +104,7 @@ UPDATE events SET description = 'Alert on new Merkl yield opportunities' WHERE n
 UPDATE events SET description = 'Alert when Binance price reaches target' WHERE name = 'general_binance_price_alert';
 UPDATE events SET description = 'Alert on new Turtle yield opportunities' WHERE name = 'general_turtle_alert';
 UPDATE events SET description = 'Alert on Binance Alpha airdrops' WHERE name = 'general_alpha_alert';
+UPDATE events SET description = 'Alert on DeFi Llama USDC/USDT yield opportunities' WHERE name = 'general_defillama_alert';
 `
 
 func (s *Store) Migrate(ctx context.Context) error {

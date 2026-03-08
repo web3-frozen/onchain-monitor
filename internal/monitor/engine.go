@@ -276,6 +276,9 @@ func (e *Engine) pollAll(ctx context.Context) {
 
 	// Check Binance price alerts
 	e.checkBinancePriceAlerts(ctx)
+
+	// Check DeFi Llama stablecoin yield alerts
+	e.checkDefiLlamaAlerts(ctx)
 }
 
 // checkMaxpainAlerts checks if current prices have crossed liquidation max pain levels.
@@ -548,6 +551,20 @@ type TurtleOpp struct {
 	Token        string
 	TurtleURL    string
 	Stablecoin   bool
+}
+
+// DefiLlamaOpp holds opportunity data for DeFi Llama yield alerts.
+type DefiLlamaOpp struct {
+	Pool           string
+	Project        string
+	Symbol         string
+	Chain          string
+	APY            float64
+	TVLUsd         float64
+	WithdrawalDays int
+	Stablecoin     bool
+	PoolMeta       *string
+	URL            string
 }
 
 // checkTurtleAlerts checks for new Turtle yield opportunities matching subscriber criteria.
@@ -934,4 +951,132 @@ func (e *Engine) logNotification(chatID int64, alertType, eventName, summary str
 		e.logger.Error("log notification failed", "chat_id", chatID, "alert_type", alertType, "error", err)
 	}
 	e.logger.Info("notification sent", "chat_id", chatID, "alert_type", alertType, "event", eventName, "summary", summary)
+}
+
+// checkDefiLlamaAlerts checks for USDC/USDT yield opportunities matching subscriber criteria.
+func (e *Engine) checkDefiLlamaAlerts(ctx context.Context) {
+	defillamaSrc, ok := e.sources["defillama"]
+	if !ok {
+		return
+	}
+
+	subscribers, err := e.store.GetSubscribersWithThresholds(ctx, "general_defillama_alert")
+	if err != nil || len(subscribers) == 0 {
+		return
+	}
+
+	type poolGetter interface {
+		GetFilteredPools(minAPY, minTVL float64, tokenFilter string, maxWithdrawDays int) []DefiLlamaOpp
+	}
+
+	getter, ok := defillamaSrc.(poolGetter)
+	if !ok {
+		return
+	}
+
+	for _, sub := range subscribers {
+		// Parse subscription settings:
+		// threshold_value = minimum APY (default 3%)
+		// threshold_pct = minimum TVL in millions (default 1)
+		// window_minutes = max withdrawal days (default 7)
+		// coin = token filter: USDC, USDT, USDC_USDT, ALL_STABLES (default USDC_USDT)
+		minAPY := sub.ThresholdValue
+		if minAPY <= 0 {
+			minAPY = 3
+		}
+		minTVL := sub.ThresholdPct * 1_000_000
+		if minTVL <= 0 {
+			minTVL = 1_000_000
+		}
+		// WindowMinutes stores withdrawal limit in minutes for consistency with other alerts
+		// Convert to days: 0 = immediate only, 1440 = 1 day, 4320 = 3 days, 10080 = 7 days
+		// WindowMinutes == 0 means unset (default to 7 days)
+		// WindowMinutes > 0 is converted to days; if result is 0 it means immediate-only
+		var maxWithdrawDays int
+		if sub.WindowMinutes == 0 {
+			maxWithdrawDays = 7 // unset, use default
+		} else {
+			maxWithdrawDays = sub.WindowMinutes / 1440
+			// Values like 1-1439 will result in 0 (immediate only)
+		}
+		tokenFilter := sub.Coin
+		if tokenFilter == "" {
+			tokenFilter = "USDC_USDT"
+		}
+
+		pools := getter.GetFilteredPools(minAPY, minTVL, tokenFilter, maxWithdrawDays)
+
+		var newPools []DefiLlamaOpp
+		for _, pool := range pools {
+			// Use pool ID + APY bucket for dedup to avoid spam on minor APY changes
+			apyBucket := int(pool.APY * 10) // 0.1% granularity
+			alertKey := fmt.Sprintf("defillama:%d:%s:%d", sub.ChatID, pool.Pool, apyBucket)
+			if e.dedup.AlreadySent(ctx, alertKey) {
+				continue
+			}
+			newPools = append(newPools, pool)
+		}
+
+		if len(newPools) == 0 {
+			continue
+		}
+
+		// Limit to top 10 pools to avoid overly long messages
+		if len(newPools) > 10 {
+			newPools = newPools[:10]
+		}
+
+		e.sendDefiLlamaGroupedAlert(sub.ChatID, newPools, minAPY, minTVL/1_000_000, maxWithdrawDays)
+
+		// Record dedup keys for sent alerts
+		for _, pool := range newPools {
+			apyBucket := int(pool.APY * 10)
+			alertKey := fmt.Sprintf("defillama:%d:%s:%d", sub.ChatID, pool.Pool, apyBucket)
+			e.dedup.Record(ctx, alertKey)
+		}
+	}
+}
+
+func (e *Engine) sendDefiLlamaGroupedAlert(chatID int64, pools []DefiLlamaOpp, minAPY, minTVLMil float64, maxDays int) {
+	// Sort by APY descending
+	sort.SliceStable(pools, func(i, j int) bool {
+		return pools[i].APY > pools[j].APY
+	})
+
+	var b strings.Builder
+	if len(pools) == 1 {
+		b.WriteString("💰 New Stablecoin Yield Alert\n\n")
+	} else {
+		b.WriteString(fmt.Sprintf("💰 %d New Stablecoin Yields\n\n", len(pools)))
+	}
+
+	for i, pool := range pools {
+		withdrawalInfo := "✅ Immediate"
+		if pool.WithdrawalDays > 0 {
+			withdrawalInfo = fmt.Sprintf("⏱️ %dd", pool.WithdrawalDays)
+		}
+
+		b.WriteString(fmt.Sprintf("%d. %s - %s\n", i+1, pool.Project, pool.Symbol))
+		b.WriteString(fmt.Sprintf("   Chain: %s | APY: %.2f%%\n", pool.Chain, pool.APY))
+		b.WriteString(fmt.Sprintf("   TVL: $%s | %s\n", formatMerklTVL(pool.TVLUsd), withdrawalInfo))
+		if i < len(pools)-1 {
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString(fmt.Sprintf("\n📋 Your filters: APY ≥%.1f%%, TVL ≥$%.0fM, ≤%dd withdrawal", minAPY, minTVLMil, maxDays))
+	b.WriteString("\n🔗 https://defillama.com/yields")
+
+	if err := e.alertFn(chatID, b.String()); err != nil {
+		metrics.AlertsFailedTotal.WithLabelValues("defillama", "defillama_alert").Inc()
+		e.logger.Error("send defillama alert failed", "chat_id", chatID, "error", err)
+	} else {
+		metrics.AlertsSentTotal.WithLabelValues("defillama", "defillama_alert").Inc()
+		symbols := make([]string, len(pools))
+		for i, p := range pools {
+			symbols[i] = p.Symbol
+		}
+		e.logNotification(chatID, "defillama", "general_defillama_alert",
+			fmt.Sprintf("%d new pools: %s", len(pools), strings.Join(symbols, ", ")))
+	}
 }
