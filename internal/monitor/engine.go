@@ -989,10 +989,15 @@ func (e *Engine) checkDefiLlamaAlerts(ctx context.Context) {
 			minTVL = 1_000_000
 		}
 		// WindowMinutes stores withdrawal limit in minutes for consistency with other alerts
-		// Convert to days: 1440 min = 1 day, 4320 = 3 days, 10080 = 7 days
-		maxWithdrawDays := sub.WindowMinutes / 1440
-		if maxWithdrawDays <= 0 {
-			maxWithdrawDays = 7
+		// Convert to days: 0 = immediate only, 1440 = 1 day, 4320 = 3 days, 10080 = 7 days
+		// WindowMinutes == 0 means unset (default to 7 days)
+		// WindowMinutes > 0 is converted to days; if result is 0 it means immediate-only
+		var maxWithdrawDays int
+		if sub.WindowMinutes == 0 {
+			maxWithdrawDays = 7 // unset, use default
+		} else {
+			maxWithdrawDays = sub.WindowMinutes / 1440
+			// Values like 1-1439 will result in 0 (immediate only)
 		}
 		tokenFilter := sub.Coin
 		if tokenFilter == "" {
