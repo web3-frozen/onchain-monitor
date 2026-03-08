@@ -266,10 +266,10 @@ func (d *DefiLlama) FetchSnapshot() (*monitor.Snapshot, error) {
 	}
 
 	// Filter USDC/USDT pools for dashboard display
-	filtered := d.FilterStablePools(pools, 0.1, 100000, "USDC_USDT", 7)
+	filtered := d.FilterStablePools(pools, 0.1, 1000000, "USDC_USDT", 7)
 
 	// Filter all stablecoins for dashboard display
-	allStableFiltered := d.FilterStablePools(pools, 0.1, 100000, "ALL_STABLES", 7)
+	allStableFiltered := d.FilterStablePools(pools, 0.1, 1000000, "ALL_STABLES", 7)
 
 	d.mu.Lock()
 	d.pools = filtered
