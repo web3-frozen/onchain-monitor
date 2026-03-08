@@ -1004,18 +1004,22 @@ func (e *Engine) checkDefiLlamaAlerts(ctx context.Context) {
 			tokenFilter = "USDC_USDT"
 		}
 
-		pools := getter.GetFilteredPools(minAPY, minTVL, tokenFilter, maxWithdrawDays)
+		// Fetch all qualifying stablecoin pools (without APY filter) so we can
+		// clear dedup keys for pools that dropped below threshold.
+		pools := getter.GetFilteredPools(0, minTVL, tokenFilter, maxWithdrawDays)
 
+		// Edge-triggered dedup: alert when pool crosses above APY threshold,
+		// clear when it drops below so it can re-trigger on the next crossing.
 		var newPools []DefiLlamaOpp
 		for _, pool := range pools {
-			// Use pool ID + APY bucket for dedup — 1% granularity to avoid
-			// re-alerting on minor APY fluctuations (e.g. 17.49% → 17.50%)
-			apyBucket := int(pool.APY)
-			alertKey := fmt.Sprintf("defillama:%d:%s:%d", sub.ChatID, pool.Pool, apyBucket)
-			if e.dedup.AlreadySent(ctx, alertKey) {
-				continue
+			alertKey := fmt.Sprintf("defillama:%d:%s", sub.ChatID, pool.Pool)
+			if pool.APY >= minAPY {
+				if !e.dedup.AlreadySent(ctx, alertKey) {
+					newPools = append(newPools, pool)
+				}
+			} else {
+				e.dedup.Clear(ctx, alertKey)
 			}
-			newPools = append(newPools, pool)
 		}
 
 		if len(newPools) == 0 {
@@ -1029,10 +1033,8 @@ func (e *Engine) checkDefiLlamaAlerts(ctx context.Context) {
 
 		e.sendDefiLlamaGroupedAlert(sub.ChatID, newPools, minAPY, minTVL/1_000_000, maxWithdrawDays)
 
-		// Record dedup keys for sent alerts
 		for _, pool := range newPools {
-			apyBucket := int(pool.APY)
-			alertKey := fmt.Sprintf("defillama:%d:%s:%d", sub.ChatID, pool.Pool, apyBucket)
+			alertKey := fmt.Sprintf("defillama:%d:%s", sub.ChatID, pool.Pool)
 			e.dedup.Record(ctx, alertKey)
 		}
 	}
