@@ -988,7 +988,9 @@ func (e *Engine) checkDefiLlamaAlerts(ctx context.Context) {
 		if minTVL <= 0 {
 			minTVL = 1_000_000
 		}
-		maxWithdrawDays := sub.WindowMinutes
+		// WindowMinutes stores withdrawal limit in minutes for consistency with other alerts
+		// Convert to days: 1440 min = 1 day, 4320 = 3 days, 10080 = 7 days
+		maxWithdrawDays := sub.WindowMinutes / 1440
 		if maxWithdrawDays <= 0 {
 			maxWithdrawDays = 7
 		}

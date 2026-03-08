@@ -21,8 +21,8 @@ const defillamaAPI = "https://yields.llama.fi/pools?include=flexible"
 
 // Pre-compiled regex patterns for withdrawal day parsing
 var (
-	withdrawalDaysRe = regexp.MustCompile(`(\d+)\s*days?\s*(?:unstaking|lockup|lock|withdrawal)`)
-	withdrawalDRe    = regexp.MustCompile(`(\d+)d\s*(?:unstaking|lockup|lock|withdrawal)?`)
+	withdrawalDaysRe  = regexp.MustCompile(`(\d+)\s*days?\s*(?:unstaking|lockup|lock|withdrawal)`)
+	withdrawalDRe     = regexp.MustCompile(`(\d+)d(?:\s*(?:unstaking|lockup|lock|withdrawal)\b|\b|$)`)
 	withdrawalWeeksRe = regexp.MustCompile(`(\d+)\s*weeks?\s*(?:unstaking|lockup|lock|withdrawal)`)
 )
 
