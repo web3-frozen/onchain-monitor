@@ -32,6 +32,7 @@ A Go-based on-chain metrics monitoring API. Polls multiple DeFi data sources, co
 | **Max Pain** | BTC/ETH Long & Short Max Pain prices | Self-built from Binance Futures WebSocket liquidations |
 | **Merkl** | Yield opportunities (APR, TVL, action) | Merkl v4 API (api.merkl.xyz) |
 | **Turtle** | Yield opportunities (yield, TVL, type) | Turtle API (api.turtle.xyz) |
+| **DeFi Llama** | Stablecoin yield opportunities (APY, TVL, withdrawal) | DeFi Llama Yields API (yields.llama.fi) |
 | **Binance** | BTC/USDT price (or any symbol) | Binance public ticker API |
 
 ### Adding a New Source
@@ -56,6 +57,7 @@ type Source interface {
 | **Max Pain alerts** | Fires when current price is near liquidation max pain level | Permanent until condition resets |
 | **Merkl alerts** | Fires on new yield opportunities matching user's APR/TVL/action/stablecoin criteria | Permanent per opportunity per user |
 | **Turtle alerts** | Fires on new Turtle yield opportunities matching user's yield/TVL/type/stablecoin criteria | Permanent per opportunity per user |
+| **DeFi Llama alerts** | Fires on stablecoin yield opportunities matching user's APY/TVL/token/withdrawal criteria | Permanent per opportunity per user (APY bucket dedup) |
 | **Binance price alerts** | Fires when a coin's price crosses a user-defined target (increase/decrease to X) | Permanent until condition resets |
 | **Daily reports** | Scheduled summary sent at configured hour (UTC+8) | Keyed by date (naturally unique) |
 
@@ -201,6 +203,7 @@ internal/
       maxpain.go            # Max Pain from Binance liquidation data
       merkl.go              # Merkl yield opportunities (API v4)
       turtle.go             # Turtle yield opportunities (api.turtle.xyz)
+      defillama.go          # DeFi Llama stablecoin yields (yields.llama.fi)
       binance.go            # Binance price alerts (public ticker API)
   store/                    # PostgreSQL store + migrations
   telegram/                 # Telegram bot (long-polling, OTP linking)
