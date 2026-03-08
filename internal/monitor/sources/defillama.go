@@ -13,18 +13,9 @@ import (
 	"time"
 
 	"github.com/web3-frozen/onchain-monitor/internal/monitor"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 )
 
 const defillamaAPI = "https://yields.llama.fi/pools?include=flexible"
-
-// Pre-compiled regex patterns for withdrawal day parsing
-var (
-	withdrawalDaysRe  = regexp.MustCompile(`(\d+)\s*days?\s*(?:unstaking|lockup|lock|withdrawal)`)
-	withdrawalDRe     = regexp.MustCompile(`(\d+)d(?:\s*(?:unstaking|lockup|lock|withdrawal)\b|\b|$)`)
-	withdrawalWeeksRe = regexp.MustCompile(`(\d+)\s*weeks?\s*(?:unstaking|lockup|lock|withdrawal)`)
-)
 
 // DefiLlamaPool represents a single yield pool from DeFi Llama.
 type DefiLlamaPool struct {
@@ -52,24 +43,43 @@ func (p *DefiLlamaPool) WithdrawalDays() int {
 
 	meta := strings.ToLower(*p.PoolMeta)
 
-	// Check days pattern: "7 days unstaking", "7 day lockup", etc.
-	if matches := withdrawalDaysRe.FindStringSubmatch(meta); len(matches) > 1 {
-		if d, err := strconv.Atoi(matches[1]); err == nil {
-			return d
-		}
+	// Common patterns: "7 days unstaking", "7 day lockup", "7d lock", etc.
+	patterns := []struct {
+		re      *regexp.Regexp
+		extract func([]string) int
+	}{
+		{
+			re: regexp.MustCompile(`(\d+)\s*days?\s*(?:unstaking|lockup|lock|withdrawal)`),
+			extract: func(m []string) int {
+				if d, err := strconv.Atoi(m[1]); err == nil {
+					return d
+				}
+				return 0
+			},
+		},
+		{
+			re: regexp.MustCompile(`(\d+)d\s*(?:unstaking|lockup|lock|withdrawal)?`),
+			extract: func(m []string) int {
+				if d, err := strconv.Atoi(m[1]); err == nil {
+					return d
+				}
+				return 0
+			},
+		},
+		{
+			re: regexp.MustCompile(`(\d+)\s*weeks?\s*(?:unstaking|lockup|lock|withdrawal)`),
+			extract: func(m []string) int {
+				if w, err := strconv.Atoi(m[1]); err == nil {
+					return w * 7
+				}
+				return 0
+			},
+		},
 	}
 
-	// Check short format: "7d", "7d lockup", etc.
-	if matches := withdrawalDRe.FindStringSubmatch(meta); len(matches) > 1 {
-		if d, err := strconv.Atoi(matches[1]); err == nil {
-			return d
-		}
-	}
-
-	// Check weeks pattern: "2 weeks unstaking", etc.
-	if matches := withdrawalWeeksRe.FindStringSubmatch(meta); len(matches) > 1 {
-		if w, err := strconv.Atoi(matches[1]); err == nil {
-			return w * 7
+	for _, pat := range patterns {
+		if matches := pat.re.FindStringSubmatch(meta); len(matches) > 1 {
+			return pat.extract(matches)
 		}
 	}
 
@@ -100,8 +110,8 @@ func (p *DefiLlamaPool) IsUSDT() bool {
 func (p *DefiLlamaPool) ProjectDisplayName() string {
 	// Convert project slug to display name
 	name := strings.ReplaceAll(p.Project, "-", " ")
-	caser := cases.Title(language.English)
-	return caser.String(name)
+	name = strings.Title(name)
+	return name
 }
 
 // DefiLlamaURL returns the DeFi Llama yields page URL.
@@ -260,17 +270,15 @@ func (d *DefiLlama) FetchSnapshot() (*monitor.Snapshot, error) {
 		return nil, err
 	}
 
-	// Filter USDC/USDT pools for dashboard display
+	// Filter for stablecoins with APY > 0.1%, TVL > 100K, withdrawal <= 7 days
+	// This is for dashboard display
 	filtered := d.FilterStablePools(pools, 0.1, 100000, "USDC_USDT", 7)
-
-	// Filter all stablecoins for dashboard display
-	allStableFiltered := d.FilterStablePools(pools, 0.1, 100000, "ALL_STABLES", 7)
 
 	d.mu.Lock()
 	d.pools = filtered
 	d.mu.Unlock()
 
-	// Calculate USDC/USDT metrics
+	// Calculate metrics
 	var usdcMaxAPY, usdtMaxAPY float64
 	var usdcCount, usdtCount int
 
@@ -289,34 +297,22 @@ func (d *DefiLlama) FetchSnapshot() (*monitor.Snapshot, error) {
 		}
 	}
 
-	// Calculate all-stablecoin metrics
-	var allStableMaxAPY float64
-	for _, p := range allStableFiltered {
-		if p.APY > allStableMaxAPY {
-			allStableMaxAPY = p.APY
-		}
-	}
-
 	return &monitor.Snapshot{
 		Source: d.Name(),
 		Chain:  d.Chain(),
 		Metrics: map[string]float64{
-			"usdc_max_apy":       usdcMaxAPY,
-			"usdt_max_apy":       usdtMaxAPY,
-			"usdc_pools":         float64(usdcCount),
-			"usdt_pools":         float64(usdtCount),
-			"total_pools":        float64(len(filtered)),
-			"all_stable_max_apy": allStableMaxAPY,
-			"all_stable_pools":   float64(len(allStableFiltered)),
+			"usdc_max_apy":  usdcMaxAPY,
+			"usdt_max_apy":  usdtMaxAPY,
+			"usdc_pools":    float64(usdcCount),
+			"usdt_pools":    float64(usdtCount),
+			"total_pools":   float64(len(filtered)),
 		},
 		DataSources: map[string]string{
-			"usdc_max_apy":       "DeFi Llama",
-			"usdt_max_apy":       "DeFi Llama",
-			"usdc_pools":         "DeFi Llama",
-			"usdt_pools":         "DeFi Llama",
-			"total_pools":        "DeFi Llama",
-			"all_stable_max_apy": "DeFi Llama",
-			"all_stable_pools":   "DeFi Llama",
+			"usdc_max_apy":  "DeFi Llama",
+			"usdt_max_apy":  "DeFi Llama",
+			"usdc_pools":    "DeFi Llama",
+			"usdt_pools":    "DeFi Llama",
+			"total_pools":   "DeFi Llama",
 		},
 		FetchedAt: time.Now(),
 	}, nil
