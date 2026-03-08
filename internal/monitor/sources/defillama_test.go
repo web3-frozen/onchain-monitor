@@ -493,3 +493,32 @@ func TestDefiLlamaPool_WithdrawalDays_WordBoundary(t *testing.T) {
 		})
 	}
 }
+
+func TestDefiLlama_FilterStablePools_ExcludesOutliers(t *testing.T) {
+	d := NewDefiLlama(nil)
+	pools := []DefiLlamaPool{
+		{Pool: "1", Symbol: "USDC", APY: 5.0, TVLUsd: 2000000, Stablecoin: true, Outlier: false},
+		{Pool: "2", Symbol: "USDC", APY: 5603.0, TVLUsd: 500000, Stablecoin: true, Outlier: true},
+		{Pool: "3", Symbol: "DAI", APY: 658.0, TVLUsd: 200000, Stablecoin: true, Outlier: true},
+		{Pool: "4", Symbol: "USDT", APY: 3.0, TVLUsd: 1000000, Stablecoin: true, Outlier: false},
+	}
+
+	// Outlier pools should be excluded from all filters
+	result := d.FilterStablePools(pools, 0.1, 100000, "USDC", 7)
+	if len(result) != 1 {
+		t.Errorf("USDC filter: got %d pools, want 1 (outlier USDC should be excluded)", len(result))
+	}
+	if result[0].Pool != "1" {
+		t.Errorf("expected pool 1, got pool %s", result[0].Pool)
+	}
+
+	result = d.FilterStablePools(pools, 0.1, 100000, "ALL_STABLES", 7)
+	if len(result) != 2 {
+		t.Errorf("ALL_STABLES filter: got %d pools, want 2 (outliers should be excluded)", len(result))
+	}
+
+	result = d.FilterStablePools(pools, 0.1, 100000, "USDC_USDT", 7)
+	if len(result) != 2 {
+		t.Errorf("USDC_USDT filter: got %d pools, want 2 (outlier should be excluded)", len(result))
+	}
+}

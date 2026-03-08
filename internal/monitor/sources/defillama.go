@@ -40,6 +40,7 @@ type DefiLlamaPool struct {
 	Stablecoin      bool     `json:"stablecoin"`
 	ILRisk          string   `json:"ilRisk"`
 	Exposure        string   `json:"exposure"`
+	Outlier         bool     `json:"outlier"`
 	UnderlyingToken []string `json:"underlyingTokens"`
 }
 
@@ -173,6 +174,11 @@ func (d *DefiLlama) FilterStablePools(pools []DefiLlamaPool, minAPY, minTVL floa
 
 		// Filter by TVL
 		if p.TVLUsd < minTVL {
+			continue
+		}
+
+		// Exclude statistical outliers flagged by DeFi Llama
+		if p.Outlier {
 			continue
 		}
 
