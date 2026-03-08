@@ -261,6 +261,8 @@ func (d *DefiLlama) GetFilteredPools(minAPY, minTVL float64, tokenFilter string,
 			Symbol:         p.Symbol,
 			Chain:          p.Chain,
 			APY:            p.APY,
+			APYBase:        p.APYBase,
+			APYReward:      p.APYReward,
 			TVLUsd:         p.TVLUsd,
 			WithdrawalDays: p.WithdrawalDays(),
 			Stablecoin:     p.Stablecoin,
@@ -371,8 +373,19 @@ func (d *DefiLlama) FetchDailyReport() (string, error) {
 		}
 
 		b.WriteString(fmt.Sprintf("%d. %s - %s\n", i+1, p.ProjectDisplayName(), p.Symbol))
-		b.WriteString(fmt.Sprintf("   Chain: %s | APY: %.2f%% | TVL: $%s\n",
-			p.Chain, p.APY, fmtTVL(p.TVLUsd)))
+		b.WriteString(fmt.Sprintf("   Chain: %s | APY: %.2f%%", p.Chain, p.APY))
+		if p.APYBase != nil || p.APYReward != nil {
+			base := 0.0
+			reward := 0.0
+			if p.APYBase != nil {
+				base = *p.APYBase
+			}
+			if p.APYReward != nil {
+				reward = *p.APYReward
+			}
+			b.WriteString(fmt.Sprintf(" (Base: %.2f%% + Reward: %.2f%%)", base, reward))
+		}
+		b.WriteString(fmt.Sprintf(" | TVL: $%s\n", fmtTVL(p.TVLUsd)))
 		b.WriteString(fmt.Sprintf("   Withdrawal: %s\n", withdrawalInfo))
 		b.WriteString(fmt.Sprintf("   🔗 %s\n", p.DefiLlamaURL()))
 		b.WriteString("\n")

@@ -293,12 +293,17 @@ func (t *Turtle) GetFilteredOpportunities(minAPR, minTVL float64, tagFilter, tok
 			}
 		}
 
+		incentives := make([]monitor.TurtleIncentive, len(o.Incentives))
+		for j, inc := range o.Incentives {
+			incentives[j] = monitor.TurtleIncentive{Name: inc.Name, Yield: inc.Yield}
+		}
 		result = append(result, monitor.TurtleOpp{
 			ID:           o.ID,
 			Name:         o.Name,
 			Type:         o.Type,
 			TVL:          o.TVL,
 			APR:          o.TotalYield(),
+			Incentives:   incentives,
 			ChainName:    o.ChainName(),
 			Organization: o.OrganizationName(),
 			Token:        o.TokenSymbol(),
@@ -377,8 +382,16 @@ func (t *Turtle) FetchDailyReport() (string, error) {
 			stable = " 🟢"
 		}
 		b.WriteString(fmt.Sprintf("%d. %s%s\n", i+1, o.Name, stable))
-		b.WriteString(fmt.Sprintf("   Yield: %.1f%% | TVL: $%s | %s | %s\n",
-			o.TotalYield(), fmtTVL(o.TVL), o.ChainName(), o.Type))
+		b.WriteString(fmt.Sprintf("   Yield: %.1f%%", o.TotalYield()))
+		if len(o.Incentives) > 1 {
+			parts := make([]string, len(o.Incentives))
+			for j, inc := range o.Incentives {
+				parts[j] = fmt.Sprintf("%s: %.1f%%", inc.Name, inc.Yield)
+			}
+			b.WriteString(fmt.Sprintf(" (%s)", strings.Join(parts, " + ")))
+		}
+		b.WriteString(fmt.Sprintf(" | TVL: $%s | %s | %s\n",
+			fmtTVL(o.TVL), o.ChainName(), o.Type))
 		b.WriteString(fmt.Sprintf("   Protocol: %s | Token: %s\n", o.OrganizationName(), o.TokenSymbol()))
 		b.WriteString("\n")
 	}

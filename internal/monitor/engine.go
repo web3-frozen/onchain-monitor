@@ -540,12 +540,19 @@ func (e *Engine) sendMerklGroupedAlert(chatID int64, opps []MerklOpp) {
 }
 
 // TurtleOpp holds opportunity data for Turtle yield alerts.
+// TurtleIncentive holds a single incentive yield component.
+type TurtleIncentive struct {
+	Name  string
+	Yield float64
+}
+
 type TurtleOpp struct {
 	ID           string
 	Name         string
 	Type         string
 	TVL          float64
 	APR          float64
+	Incentives   []TurtleIncentive
 	ChainName    string
 	Organization string
 	Token        string
@@ -560,6 +567,8 @@ type DefiLlamaOpp struct {
 	Symbol         string
 	Chain          string
 	APY            float64
+	APYBase        *float64
+	APYReward      *float64
 	TVLUsd         float64
 	WithdrawalDays int
 	Stablecoin     bool
@@ -648,7 +657,15 @@ func (e *Engine) sendTurtleGroupedAlert(chatID int64, opps []TurtleOpp) {
 			stable = " 🟢"
 		}
 		b.WriteString(fmt.Sprintf("%d. %s%s\n", i+1, opp.Name, stable))
-		b.WriteString(fmt.Sprintf("   Yield: %.1f%% | TVL: $%s\n", opp.APR, formatMerklTVL(opp.TVL)))
+		b.WriteString(fmt.Sprintf("   Yield: %.1f%%", opp.APR))
+		if len(opp.Incentives) > 1 {
+			parts := make([]string, len(opp.Incentives))
+			for j, inc := range opp.Incentives {
+				parts[j] = fmt.Sprintf("%s: %.1f%%", inc.Name, inc.Yield)
+			}
+			b.WriteString(fmt.Sprintf(" (%s)", strings.Join(parts, " + ")))
+		}
+		b.WriteString(fmt.Sprintf(" | TVL: $%s\n", formatMerklTVL(opp.TVL)))
 		b.WriteString(fmt.Sprintf("   %s · %s · %s\n", opp.ChainName, opp.Type, opp.Organization))
 		b.WriteString(fmt.Sprintf("   🔗 %s\n", opp.TurtleURL))
 		if i < len(opps)-1 {
@@ -1060,7 +1077,19 @@ func (e *Engine) sendDefiLlamaGroupedAlert(chatID int64, pools []DefiLlamaOpp, m
 		}
 
 		b.WriteString(fmt.Sprintf("%d. %s - %s\n", i+1, pool.Project, pool.Symbol))
-		b.WriteString(fmt.Sprintf("   Chain: %s | APY: %.2f%%\n", pool.Chain, pool.APY))
+		b.WriteString(fmt.Sprintf("   Chain: %s | APY: %.2f%%", pool.Chain, pool.APY))
+		if pool.APYBase != nil || pool.APYReward != nil {
+			base := 0.0
+			reward := 0.0
+			if pool.APYBase != nil {
+				base = *pool.APYBase
+			}
+			if pool.APYReward != nil {
+				reward = *pool.APYReward
+			}
+			b.WriteString(fmt.Sprintf(" (Base: %.2f%% + Reward: %.2f%%)", base, reward))
+		}
+		b.WriteString("\n")
 		b.WriteString(fmt.Sprintf("   TVL: $%s | %s\n", formatMerklTVL(pool.TVLUsd), withdrawalInfo))
 		b.WriteString(fmt.Sprintf("   🔗 %s\n", pool.URL))
 		if i < len(pools)-1 {
