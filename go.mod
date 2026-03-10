@@ -1,6 +1,6 @@
 module github.com/web3-frozen/onchain-monitor
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/alicebob/miniredis/v2 v2.37.0
@@ -10,7 +10,8 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/v9 v9.18.0
-	golang.org/x/sync v0.19.0
+	golang.org/x/sync v0.20.0
+	golang.org/x/text v0.34.0
 )
 
 require (
@@ -70,7 +71,6 @@ require (
 	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	google.golang.org/api v0.188.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240701130421-f6361c86f094 // indirect
