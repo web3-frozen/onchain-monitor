@@ -14,13 +14,50 @@ permissions:
   id-token: write
 
 jobs:
+  # ── Go Lint ───────────────────────────────────────────────
+  lint:
+    name: Go Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+          args: --timeout=5m
+
+  # ── Go Test ───────────────────────────────────────────────
+  test:
+    name: Go Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Go test
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Go coverage report
+        run: go tool cover -func=coverage.out
+
   ci:
+    needs: [lint, test]
     uses: web3-frozen/homelab-apps/.github/workflows/ci-container.yaml@main
     with:
       app-name: onchain-monitor
       image-name: onchain-monitor
       workload-dir: workloads/onchain-monitor
-      go-version: "1.25"
+      # go-version omitted: Go lint/test run in the dedicated jobs above.
+      # The reusable workflow's built-in golangci-lint (v1.x) does not support Go 1.25.
     secrets: inherit
 
   # ── Integration Test ─────────────────────────────────────
