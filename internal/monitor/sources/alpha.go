@@ -52,7 +52,7 @@ func (a *Alpha) FetchSnapshot() (*monitor.Snapshot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("alpha API: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("alpha API status: %d", resp.StatusCode)
 	}

@@ -70,7 +70,7 @@ func main() {
 		logger.Error("failed to connect to redis after retries", "error", err)
 		os.Exit(1)
 	}
-	defer dd.Close()
+	defer func() { _ = dd.Close() }()
 	logger.Info("redis connected for alert dedup")
 
 	// Monitoring engine
