@@ -648,7 +648,7 @@ func (e *Engine) sendTurtleGroupedAlert(chatID int64, opps []TurtleOpp) {
 	if len(opps) == 1 {
 		b.WriteString("🐢 New Turtle Yield Opportunity\n\n")
 	} else {
-		b.WriteString(fmt.Sprintf("🐢 %d New Turtle Yield Opportunities\n\n", len(opps)))
+		fmt.Fprintf(&b, "🐢 %d New Turtle Yield Opportunities\n\n", len(opps))
 	}
 
 	for i, opp := range opps {
@@ -656,8 +656,8 @@ func (e *Engine) sendTurtleGroupedAlert(chatID int64, opps []TurtleOpp) {
 		if opp.Stablecoin {
 			stable = " 🟢"
 		}
-		b.WriteString(fmt.Sprintf("%d. %s%s\n", i+1, opp.Name, stable))
-		b.WriteString(fmt.Sprintf("   Yield: %.1f%%", opp.APR))
+		fmt.Fprintf(&b, "%d. %s%s\n", i+1, opp.Name, stable)
+		fmt.Fprintf(&b, "   Yield: %.1f%%", opp.APR)
 		if len(opp.Incentives) > 1 {
 			parts := make([]string, len(opp.Incentives))
 			for j, inc := range opp.Incentives {
