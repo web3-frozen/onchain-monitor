@@ -51,7 +51,7 @@ func (b *Bot) SendMessage(chatID int64, text string) error {
 	if err != nil {
 		return fmt.Errorf("send message: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		var errResp struct {
@@ -93,7 +93,7 @@ func (b *Bot) poll(ctx context.Context) {
 		time.Sleep(5 * time.Second)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var result struct {
 		OK     bool `json:"ok"`
@@ -126,12 +126,12 @@ func (b *Bot) poll(ctx context.Context) {
 		text := strings.TrimSpace(u.Message.Text)
 		username := u.Message.From.Username
 
-		switch {
-		case text == "/start":
+		switch text {
+		case "/start":
 			b.handleStart(ctx, chatID, username)
-		case text == "/help":
+		case "/help":
 			b.handleHelp(chatID)
-		case text == "/status":
+		case "/status":
 			b.handleStatus(ctx, chatID)
 		default:
 			_ = b.SendMessage(chatID, "Unknown command. Send /help for available commands.")

@@ -508,7 +508,7 @@ func (e *Engine) sendMerklGroupedAlert(chatID int64, opps []MerklOpp) {
 	if len(opps) == 1 {
 		b.WriteString("💰 New Yield Opportunity\n\n")
 	} else {
-		b.WriteString(fmt.Sprintf("💰 %d New Yield Opportunities\n\n", len(opps)))
+		fmt.Fprintf(&b, "💰 %d New Yield Opportunities\n\n", len(opps))
 	}
 
 	for i, opp := range opps {
@@ -516,10 +516,10 @@ func (e *Engine) sendMerklGroupedAlert(chatID int64, opps []MerklOpp) {
 		if opp.Stablecoin {
 			stable = " 🟢"
 		}
-		b.WriteString(fmt.Sprintf("%d. %s%s\n", i+1, opp.Name, stable))
-		b.WriteString(fmt.Sprintf("   APR: %.1f%% | TVL: $%s\n", opp.APR, formatMerklTVL(opp.TVL)))
-		b.WriteString(fmt.Sprintf("   %s · %s · %s\n", opp.ChainName, opp.Action, opp.Protocol))
-		b.WriteString(fmt.Sprintf("   🔗 %s\n", opp.MerklURL))
+		fmt.Fprintf(&b, "%d. %s%s\n", i+1, opp.Name, stable)
+		fmt.Fprintf(&b, "   APR: %.1f%% | TVL: $%s\n", opp.APR, formatMerklTVL(opp.TVL))
+		fmt.Fprintf(&b, "   %s · %s · %s\n", opp.ChainName, opp.Action, opp.Protocol)
+		fmt.Fprintf(&b, "   🔗 %s\n", opp.MerklURL)
 		if i < len(opps)-1 {
 			b.WriteString("\n")
 		}

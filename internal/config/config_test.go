@@ -7,20 +7,21 @@ import (
 
 func TestEnvOr(t *testing.T) {
 	// Unset key returns fallback
-	os.Unsetenv("TEST_ENVOR_KEY")
+	if err := os.Unsetenv("TEST_ENVOR_KEY"); err != nil {
+		t.Fatal(err)
+	}
 	if got := envOr("TEST_ENVOR_KEY", "default"); got != "default" {
 		t.Errorf("envOr unset key = %q, want %q", got, "default")
 	}
 
 	// Set key returns value
-	os.Setenv("TEST_ENVOR_KEY", "custom")
-	defer os.Unsetenv("TEST_ENVOR_KEY")
+	t.Setenv("TEST_ENVOR_KEY", "custom")
 	if got := envOr("TEST_ENVOR_KEY", "default"); got != "custom" {
 		t.Errorf("envOr set key = %q, want %q", got, "custom")
 	}
 
 	// Empty string returns fallback
-	os.Setenv("TEST_ENVOR_KEY", "")
+	t.Setenv("TEST_ENVOR_KEY", "")
 	if got := envOr("TEST_ENVOR_KEY", "fallback"); got != "fallback" {
 		t.Errorf("envOr empty key = %q, want %q", got, "fallback")
 	}
@@ -29,7 +30,9 @@ func TestEnvOr(t *testing.T) {
 func TestLoadDefaults(t *testing.T) {
 	// Clear all relevant env vars
 	for _, k := range []string{"PORT", "DATABASE_URL", "TELEGRAM_BOT_TOKEN", "FRONTEND_ORIGIN", "REDIS_URL", "REDIS_PASSWORD", "INFISICAL_CLIENT_ID", "INFISICAL_CLIENT_SECRET"} {
-		os.Unsetenv(k)
+		if err := os.Unsetenv(k); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	cfg := Load()
@@ -49,16 +52,10 @@ func TestLoadDefaults(t *testing.T) {
 }
 
 func TestLoadFromEnv(t *testing.T) {
-	os.Setenv("PORT", "9090")
-	os.Setenv("DATABASE_URL", "postgres://test")
-	os.Setenv("TELEGRAM_BOT_TOKEN", "test-token")
-	os.Setenv("FRONTEND_ORIGIN", "http://localhost:3000")
-	defer func() {
-		os.Unsetenv("PORT")
-		os.Unsetenv("DATABASE_URL")
-		os.Unsetenv("TELEGRAM_BOT_TOKEN")
-		os.Unsetenv("FRONTEND_ORIGIN")
-	}()
+	t.Setenv("PORT", "9090")
+	t.Setenv("DATABASE_URL", "postgres://test")
+	t.Setenv("TELEGRAM_BOT_TOKEN", "test-token")
+	t.Setenv("FRONTEND_ORIGIN", "http://localhost:3000")
 
 	cfg := Load()
 
