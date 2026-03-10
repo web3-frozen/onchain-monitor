@@ -24,7 +24,7 @@ func setupTestDedup(t *testing.T) (*Deduplicator, *miniredis.Miniredis) {
 func TestAlreadySentNewKey(t *testing.T) {
 	d, mr := setupTestDedup(t)
 	defer mr.Close()
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 
 	ctx := context.Background()
 	if d.AlreadySent(ctx, "test:key:1") {
@@ -35,7 +35,7 @@ func TestAlreadySentNewKey(t *testing.T) {
 func TestRecordAndAlreadySent(t *testing.T) {
 	d, mr := setupTestDedup(t)
 	defer mr.Close()
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 
 	ctx := context.Background()
 	d.Record(ctx, "test:key:2")
@@ -48,7 +48,7 @@ func TestRecordAndAlreadySent(t *testing.T) {
 func TestClear(t *testing.T) {
 	d, mr := setupTestDedup(t)
 	defer mr.Close()
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 
 	ctx := context.Background()
 	d.Record(ctx, "test:key:3")
@@ -66,7 +66,7 @@ func TestClear(t *testing.T) {
 func TestClearByPattern(t *testing.T) {
 	d, mr := setupTestDedup(t)
 	defer mr.Close()
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 
 	ctx := context.Background()
 	d.Record(ctx, "alert:123:metric1")
@@ -88,7 +88,7 @@ func TestClearByPattern(t *testing.T) {
 
 func TestAlreadySentFailClosed(t *testing.T) {
 	d, mr := setupTestDedup(t)
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 
 	// Stop Redis to simulate failure
 	mr.Close()
