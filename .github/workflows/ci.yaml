@@ -20,7 +20,7 @@ jobs:
       app-name: onchain-monitor
       image-name: onchain-monitor
       workload-dir: workloads/onchain-monitor
-      go-version: "1.24"
+      go-version: "1.25"
     secrets: inherit
 
   # ── Integration Test ─────────────────────────────────────
@@ -57,7 +57,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
           cache: true
 
       - name: Build server
