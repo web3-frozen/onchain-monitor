@@ -63,7 +63,7 @@ func Subscribe(s *store.Store) http.HandlerFunc {
 			return
 		}
 
-		if req.ThresholdPct <= 0 {
+		if req.ThresholdPct < 0 {
 			req.ThresholdPct = 10
 		}
 		if req.WindowMinutes <= 0 {
@@ -117,7 +117,7 @@ func UpdateSubscription(s *store.Store) http.HandlerFunc {
 			return
 		}
 
-		if req.ThresholdPct <= 0 {
+		if req.ThresholdPct < 0 {
 			req.ThresholdPct = 10
 		}
 		if req.WindowMinutes <= 0 {
