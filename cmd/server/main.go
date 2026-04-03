@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/web3-frozen/onchain-monitor/internal/collector"
