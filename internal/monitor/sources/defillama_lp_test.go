@@ -70,7 +70,7 @@ func TestFilterLPPools(t *testing.T) {
 			TVLUsd: 10_000_000, APY: 3, APYBase: &base1, APYReward: &reward2,
 			Exposure: "single", Pool: "pool-4",
 		},
-		// Outlier - should be filtered out
+		// Outlier — still included (DeFi Llama outlier is statistical, not a legitimacy flag)
 		{
 			Chain: "Sui", Project: "scam-dex", Symbol: "SCAM-SUI",
 			TVLUsd: 1_000_000, APY: 500, APYBase: &base1, APYReward: &reward10,
@@ -82,25 +82,23 @@ func TestFilterLPPools(t *testing.T) {
 
 	t.Run("filter by chain Sui with 3% min reward", func(t *testing.T) {
 		result := d.FilterLPPools(pools, 3, 1_000_000, "Sui")
-		if len(result) != 1 {
-			t.Fatalf("expected 1 pool, got %d", len(result))
+		if len(result) != 2 {
+			t.Fatalf("expected 2 pools, got %d", len(result))
 		}
-		if result[0].Pool != "pool-1" {
-			t.Errorf("expected pool-1, got %s", result[0].Pool)
+		// pool-1 (reward=10) and pool-5 (reward=10, outlier), sorted desc
+		if result[0].Pool != "pool-1" && result[0].Pool != "pool-5" {
+			t.Errorf("expected pool-1 or pool-5 first, got %s", result[0].Pool)
 		}
 	})
 
 	t.Run("filter all chains with 3% min reward", func(t *testing.T) {
 		result := d.FilterLPPools(pools, 3, 1_000_000, "ALL")
-		if len(result) != 2 {
-			t.Fatalf("expected 2 pools, got %d", len(result))
+		if len(result) != 3 {
+			t.Fatalf("expected 3 pools, got %d", len(result))
 		}
-		// Should be sorted by reward APY descending
-		if result[0].Pool != "pool-1" {
-			t.Errorf("expected pool-1 first (highest reward), got %s", result[0].Pool)
-		}
-		if result[1].Pool != "pool-2" {
-			t.Errorf("expected pool-2 second, got %s", result[1].Pool)
+		// Should be sorted by reward APY descending: pool-1(10), pool-5(10), pool-2(5)
+		if result[2].Pool != "pool-2" {
+			t.Errorf("expected pool-2 last (lowest reward), got %s", result[2].Pool)
 		}
 	})
 
@@ -116,8 +114,8 @@ func TestFilterLPPools(t *testing.T) {
 
 	t.Run("case-insensitive chain filter", func(t *testing.T) {
 		result := d.FilterLPPools(pools, 1, 100_000, "sui")
-		if len(result) != 2 {
-			t.Fatalf("expected 2 Sui pools, got %d", len(result))
+		if len(result) != 3 {
+			t.Fatalf("expected 3 Sui pools, got %d", len(result))
 		}
 	})
 
