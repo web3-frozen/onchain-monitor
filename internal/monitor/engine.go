@@ -1160,8 +1160,8 @@ func (e *Engine) checkDefiLlamaLPAlerts(ctx context.Context) {
 			minRewardAPY = 5
 		}
 		minTVL := sub.ThresholdPct * 1_000_000
-		if minTVL <= 0 {
-			minTVL = 100_000
+		if sub.ThresholdPct < 0 {
+			minTVL = 0
 		}
 		chainFilter := sub.Coin
 		if chainFilter == "" {
