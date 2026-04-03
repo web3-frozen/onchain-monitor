@@ -279,6 +279,9 @@ func (e *Engine) pollAll(ctx context.Context) {
 
 	// Check DeFi Llama stablecoin yield alerts
 	e.checkDefiLlamaAlerts(ctx)
+
+	// Check DeFi Llama LP reward alerts
+	e.checkDefiLlamaLPAlerts(ctx)
 }
 
 // checkMaxpainAlerts checks if current prices have crossed liquidation max pain levels.
@@ -574,6 +577,19 @@ type DefiLlamaOpp struct {
 	Stablecoin     bool
 	PoolMeta       *string
 	URL            string
+}
+
+// DefiLlamaLPOpp holds opportunity data for DeFi Llama LP reward alerts.
+type DefiLlamaLPOpp struct {
+	Pool      string
+	Project   string
+	Symbol    string
+	Chain     string
+	APY       float64
+	APYBase   *float64
+	APYReward *float64
+	TVLUsd    float64
+	URL       string
 }
 
 // checkTurtleAlerts checks for new Turtle yield opportunities matching subscriber criteria.
@@ -1110,5 +1126,144 @@ func (e *Engine) sendDefiLlamaGroupedAlert(chatID int64, pools []DefiLlamaOpp, m
 		}
 		e.logNotification(chatID, "defillama", "general_defillama_alert",
 			fmt.Sprintf("%d new pools: %s", len(pools), strings.Join(symbols, ", ")))
+	}
+}
+
+// checkDefiLlamaLPAlerts checks for LP/DEX reward opportunities matching subscriber criteria.
+func (e *Engine) checkDefiLlamaLPAlerts(ctx context.Context) {
+	lpSrc, ok := e.sources["defillama_lp"]
+	if !ok {
+		return
+	}
+
+	subscribers, err := e.store.GetSubscribersWithThresholds(ctx, "general_defillama_lp_alert")
+	if err != nil || len(subscribers) == 0 {
+		return
+	}
+
+	type lpPoolGetter interface {
+		GetFilteredLPPools(minRewardAPY, minTVL float64, chainFilter string) []DefiLlamaLPOpp
+	}
+
+	getter, ok := lpSrc.(lpPoolGetter)
+	if !ok {
+		return
+	}
+
+	for _, sub := range subscribers {
+		// Parse subscription settings:
+		// threshold_value = minimum reward APY (default 5%)
+		// threshold_pct = minimum TVL in millions (default 0.1)
+		// coin = chain filter (e.g., "Sui", "Ethereum", "ALL"; default "ALL")
+		minRewardAPY := sub.ThresholdValue
+		if minRewardAPY <= 0 {
+			minRewardAPY = 5
+		}
+		minTVL := sub.ThresholdPct * 1_000_000
+		if minTVL <= 0 {
+			minTVL = 100_000
+		}
+		chainFilter := sub.Coin
+		if chainFilter == "" {
+			chainFilter = "ALL"
+		}
+
+		// Fetch all qualifying LP pools (without reward APY filter) so we can
+		// clear dedup keys for pools that dropped below threshold.
+		pools := getter.GetFilteredLPPools(0, minTVL, chainFilter)
+
+		// Edge-triggered dedup: alert when pool crosses above reward APY threshold,
+		// clear when it drops below so it can re-trigger on the next crossing.
+		var newPools []DefiLlamaLPOpp
+		for _, pool := range pools {
+			rewardAPY := 0.0
+			if pool.APYReward != nil {
+				rewardAPY = *pool.APYReward
+			}
+			alertKey := fmt.Sprintf("defillama_lp:%d:%s", sub.ChatID, pool.Pool)
+			if rewardAPY >= minRewardAPY {
+				if !e.dedup.AlreadySent(ctx, alertKey) {
+					newPools = append(newPools, pool)
+				}
+			} else {
+				e.dedup.Clear(ctx, alertKey)
+			}
+		}
+
+		if len(newPools) == 0 {
+			continue
+		}
+
+		// Limit to top 10 pools
+		if len(newPools) > 10 {
+			newPools = newPools[:10]
+		}
+
+		e.sendDefiLlamaLPGroupedAlert(sub.ChatID, newPools, minRewardAPY, minTVL/1_000_000, chainFilter)
+
+		for _, pool := range newPools {
+			alertKey := fmt.Sprintf("defillama_lp:%d:%s", sub.ChatID, pool.Pool)
+			e.dedup.Record(ctx, alertKey)
+		}
+	}
+}
+
+func (e *Engine) sendDefiLlamaLPGroupedAlert(chatID int64, pools []DefiLlamaLPOpp, minRewardAPY, minTVLMil float64, chainFilter string) {
+	// Sort by reward APY descending
+	sort.SliceStable(pools, func(i, j int) bool {
+		ri, rj := 0.0, 0.0
+		if pools[i].APYReward != nil {
+			ri = *pools[i].APYReward
+		}
+		if pools[j].APYReward != nil {
+			rj = *pools[j].APYReward
+		}
+		return ri > rj
+	})
+
+	var b strings.Builder
+	if len(pools) == 1 {
+		b.WriteString("🏊 New LP Reward Alert\n\n")
+	} else {
+		b.WriteString(fmt.Sprintf("🏊 %d New LP Rewards\n\n", len(pools)))
+	}
+
+	for i, pool := range pools {
+		rewardAPY := 0.0
+		baseAPY := 0.0
+		if pool.APYReward != nil {
+			rewardAPY = *pool.APYReward
+		}
+		if pool.APYBase != nil {
+			baseAPY = *pool.APYBase
+		}
+
+		b.WriteString(fmt.Sprintf("%d. %s - %s\n", i+1, pool.Project, pool.Symbol))
+		b.WriteString(fmt.Sprintf("   Chain: %s | Reward: %.2f%% + Base: %.2f%% = %.2f%%\n",
+			pool.Chain, rewardAPY, baseAPY, pool.APY))
+		b.WriteString(fmt.Sprintf("   TVL: $%s\n", formatMerklTVL(pool.TVLUsd)))
+		b.WriteString(fmt.Sprintf("   🔗 %s\n", pool.URL))
+		if i < len(pools)-1 {
+			b.WriteString("\n")
+		}
+	}
+
+	chainLabel := chainFilter
+	if chainFilter == "ALL" {
+		chainLabel = "All chains"
+	}
+	b.WriteString(fmt.Sprintf("\n📋 Your filters: Reward APY ≥%.1f%%, TVL ≥$%.1fM, Chain: %s", minRewardAPY, minTVLMil, chainLabel))
+
+	if err := e.alertFn(chatID, b.String()); err != nil {
+		metrics.AlertsFailedTotal.WithLabelValues("defillama_lp", "defillama_lp_alert").Inc()
+		e.logger.Error("send defillama LP alert failed", "chat_id", chatID, "error", err)
+	} else {
+		metrics.AlertsSentTotal.WithLabelValues("defillama_lp", "defillama_lp_alert").Inc()
+		symbols := make([]string, len(pools))
+		for i, p := range pools {
+			symbols[i] = p.Symbol
+		}
+		e.logNotification(chatID, "defillama_lp", "general_defillama_lp_alert",
+			fmt.Sprintf("%d new LP pools (%s): %s", len(pools), chainFilter, strings.Join(symbols, ", ")))
 	}
 }

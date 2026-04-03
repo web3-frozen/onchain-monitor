@@ -84,6 +84,7 @@ func main() {
 	engine.Register(sources.NewBinance())
 	engine.Register(sources.NewAlpha())
 	engine.Register(sources.NewDefiLlama(logger))
+	engine.Register(sources.NewDefiLlamaLP(logger))
 
 	// HTTP routes
 	r := chi.NewRouter()
