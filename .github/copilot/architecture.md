@@ -29,6 +29,12 @@ internal/
       altura.go                 # Altura on Hyperliquid
       neverland.go              # Neverland on Monad
       feargreed.go              # Crypto Fear & Greed Index (General)
+      maxpain.go                # Max Pain from Binance liquidation data
+      merkl.go                  # Merkl yield opportunities (API v4)
+      turtle.go                 # Turtle yield opportunities (api.turtle.xyz)
+      defillama.go              # DeFi Llama stablecoin yields
+      defillama_lp.go           # DeFi Llama LP/DEX reward yields
+      binance.go                # Binance price alerts (public ticker API)
   store/
     postgres.go                 # All DB operations
     migrations.go               # Schema + seed data
@@ -58,6 +64,7 @@ type Snapshot struct {
 1. **Percentage-based** (drop/increase): Alert when metric changes >X% in Y minutes. Uses `threshold_pct`, `window_minutes`, `direction` (drop/increase).
 2. **Value-based** (higher/lower): Alert when metric crosses absolute threshold. Uses `threshold_value`, `direction` (higher/lower). 60-min dedup.
 3. **Daily report**: Sent at subscriber's chosen hour (UTC+8). Uses `report_hour`.
+4. **LP reward alerts** (DeFi Llama LP): Alert on LP pools with reward APY above threshold. Uses `threshold_value` (min reward APY %), `threshold_pct` (min TVL in millions, 0 allowed), `coin` (chain filter: Sui/Ethereum/ALL). Edge-triggered dedup per pool per user.
 
 ## Engine Flow (engine.go)
 - Polls all sources every 1 minute
@@ -72,12 +79,15 @@ Each source gets exactly 2 events:
 - `{source_name}_metric_alert` — for threshold alerts
 - `{source_name}_daily_report` — for daily reports
 
+Some sources have specialized event types beyond the standard 2-event pattern (e.g., `general_defillama_lp_alert` for LP reward alerts).
+
 ## Database (subscriptions table key columns)
 - `threshold_pct` — % change threshold (for drop/increase alerts)
 - `window_minutes` — time window for % comparison
 - `direction` — "drop", "increase", "higher", or "lower"
 - `report_hour` — 0-23 UTC+8 hour for daily reports
 - `threshold_value` — absolute value threshold (for higher/lower alerts)
+- Note: `threshold_pct` allows 0 for LP/yield alerts (new pools may have no TVL)
 
 ---
 

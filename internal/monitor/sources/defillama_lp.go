@@ -68,11 +68,6 @@ func (d *DefiLlamaLP) FilterLPPools(pools []DefiLlamaPool, minRewardAPY, minTVL 
 			continue
 		}
 
-		// Exclude statistical outliers
-		if p.Outlier {
-			continue
-		}
-
 		// Filter by chain
 		if chainFilter != "" && chainFilter != "ALL" {
 			if !strings.EqualFold(p.Chain, chainFilter) {

@@ -51,7 +51,7 @@ type Source interface {
 
 - **Engine** (`engine.go`) polls all sources every 60 seconds
 - Each poll compares current metrics against subscriber thresholds
-- Alert types: value_alert, metric_alert, maxpain, merkl, turtle, defillama, binance_price, daily_report
+- Alert types: value_alert, metric_alert, maxpain, merkl, turtle, defillama, defillama_lp, binance_price, daily_report
 - **Dedup** is permanent (no TTL) and fail-closed (suppresses on Redis failure)
 - Dedup keys are cleared when the alert condition resets
 
@@ -64,7 +64,7 @@ Events use the pattern `{category}_{type}` where:
 The frontend maps categories to chain names for display:
 | Category | Chain | Projects |
 |---|---|---|
-| `general` | General | Fear & Greed, MaxPain, Merkl, Turtle, Binance, DeFi Llama |
+| `general` | General | Fear & Greed, MaxPain, Merkl, Turtle, Binance, DeFi Llama, DeFi Llama LP |
 | `altura` | Hyperliquid | Altura |
 | `neverland` | Monad | Neverland |
 
