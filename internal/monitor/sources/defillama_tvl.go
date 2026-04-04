@@ -47,10 +47,13 @@ type DefiLlamaTVL struct {
 	logger    *slog.Logger
 	mu        sync.RWMutex
 	protocols []DefiLlamaProtocol
+	protocolsAt time.Time // when the protocols list was last refreshed
 	// Cache for 30d TVL change per protocol slug
 	tvl30dCache   map[string]float64
 	tvl30dCacheAt time.Time
 }
+
+const protocolsCacheTTL = 5 * time.Minute
 
 func NewDefiLlamaTVL(logger *slog.Logger) *DefiLlamaTVL {
 	return &DefiLlamaTVL{
@@ -72,6 +75,7 @@ func (d *DefiLlamaTVL) FetchSnapshot() (*monitor.Snapshot, error) {
 
 	d.mu.Lock()
 	d.protocols = protocols
+	d.protocolsAt = time.Now()
 	d.mu.Unlock()
 
 	// Calculate aggregate metrics for the dashboard
@@ -120,23 +124,51 @@ func (d *DefiLlamaTVL) fetchProtocols() ([]DefiLlamaProtocol, error) {
 	return protocols, nil
 }
 
-// GetProtocols returns the latest cached protocols.
+// GetProtocols returns the latest cached protocols, fetching if needed.
 func (d *DefiLlamaTVL) GetProtocols() []DefiLlamaProtocol {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	out := make([]DefiLlamaProtocol, len(d.protocols))
-	copy(out, d.protocols)
+	protocols := d.ensureProtocols()
+	out := make([]DefiLlamaProtocol, len(protocols))
+	copy(out, protocols)
 	return out
+}
+
+// ensureProtocols makes sure the protocols list is populated.
+// If the cache is empty or stale, it fetches from the DeFi Llama API.
+func (d *DefiLlamaTVL) ensureProtocols() []DefiLlamaProtocol {
+	d.mu.RLock()
+	protocols := d.protocols
+	age := time.Since(d.protocolsAt)
+	d.mu.RUnlock()
+
+	if len(protocols) > 0 && age < protocolsCacheTTL {
+		return protocols
+	}
+
+	// Fetch fresh data
+	fresh, err := d.fetchProtocols()
+	if err != nil {
+		d.logger.Error("fetch protocols for search", "error", err)
+		return protocols // return stale data if available
+	}
+
+	d.mu.Lock()
+	d.protocols = fresh
+	d.protocolsAt = time.Now()
+	d.mu.Unlock()
+
+	return fresh
 }
 
 // SearchProtocols returns protocols matching the query string (case-insensitive prefix/substring match).
 // Returns at most limit results, sorted by TVL descending.
+// Fetches from DeFi Llama API on-demand if the cache is empty or stale.
 func (d *DefiLlamaTVL) SearchProtocols(query string, limit int) []DefiLlamaProtocol {
-	d.mu.RLock()
-	protocols := d.protocols
-	d.mu.RUnlock()
+	if query == "" {
+		return nil
+	}
 
-	if query == "" || len(protocols) == 0 {
+	protocols := d.ensureProtocols()
+	if len(protocols) == 0 {
 		return nil
 	}
 
@@ -164,9 +196,7 @@ func (d *DefiLlamaTVL) SearchProtocols(query string, limit int) []DefiLlamaProto
 
 // GetProtocolBySlug returns a protocol by its slug, or nil if not found.
 func (d *DefiLlamaTVL) GetProtocolBySlug(slug string) *DefiLlamaProtocol {
-	d.mu.RLock()
-	protocols := d.protocols
-	d.mu.RUnlock()
+	protocols := d.ensureProtocols()
 
 	slugLower := strings.ToLower(slug)
 	for _, p := range protocols {
