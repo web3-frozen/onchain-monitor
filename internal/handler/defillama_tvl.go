@@ -18,21 +18,23 @@ type protocolSearchResult struct {
 
 type protocolSearcher interface {
 	SearchProtocols(query string, limit int) []sources.DefiLlamaProtocol
+	TopProtocols(limit int) []sources.DefiLlamaProtocol
 }
 
 // SearchDefiLlamaProtocols returns an HTTP handler that searches DeFiLlama protocols.
 // GET /api/defillama/protocols/search?q=aave&limit=20
+// When q is empty, returns top protocols by TVL.
 func SearchDefiLlamaProtocols(searcher protocolSearcher) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query().Get("q")
-		if query == "" {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte("[]"))
-			return
-		}
-
 		limit := 20
-		protocols := searcher.SearchProtocols(query, limit)
+
+		var protocols []sources.DefiLlamaProtocol
+		if query == "" {
+			protocols = searcher.TopProtocols(limit)
+		} else {
+			protocols = searcher.SearchProtocols(query, limit)
+		}
 
 		results := make([]protocolSearchResult, 0, len(protocols))
 		for _, p := range protocols {

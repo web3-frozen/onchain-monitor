@@ -159,6 +159,23 @@ func (d *DefiLlamaTVL) ensureProtocols() []DefiLlamaProtocol {
 	return fresh
 }
 
+// TopProtocols returns the top protocols by TVL (already sorted by the API).
+func (d *DefiLlamaTVL) TopProtocols(limit int) []DefiLlamaProtocol {
+	protocols := d.ensureProtocols()
+
+	var top []DefiLlamaProtocol
+	for _, p := range protocols {
+		if p.TVL <= 0 {
+			continue
+		}
+		top = append(top, p)
+		if len(top) >= limit {
+			break
+		}
+	}
+	return top
+}
+
 // SearchProtocols returns protocols matching the query string (case-insensitive prefix/substring match).
 // Returns at most limit results, sorted by TVL descending.
 // Fetches from DeFi Llama API on-demand if the cache is empty or stale.
