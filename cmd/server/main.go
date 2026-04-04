@@ -84,6 +84,8 @@ func main() {
 	engine.Register(sources.NewAlpha())
 	engine.Register(sources.NewDefiLlama(logger))
 	engine.Register(sources.NewDefiLlamaLP(logger))
+	defillamaTVLSrc := sources.NewDefiLlamaTVL(logger)
+	engine.Register(defillamaTVLSrc)
 
 	// HTTP routes
 	r := chi.NewRouter()
@@ -108,6 +110,7 @@ func main() {
 		r.Get("/stats", handler.Stats(engine))
 		r.Get("/stats/meta", handler.StatsMetadata(engine))
 		r.Get("/notifications", handler.ListNotifications(db))
+		r.Get("/defillama/protocols/search", handler.SearchDefiLlamaProtocols(defillamaTVLSrc))
 	})
 
 	srv := &http.Server{

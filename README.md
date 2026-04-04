@@ -34,6 +34,7 @@ A Go-based on-chain metrics monitoring API. Polls multiple DeFi data sources, co
 | **Turtle** | Yield opportunities (yield, TVL, type) | Turtle API (api.turtle.xyz) |
 | **DeFi Llama** | Stablecoin yield opportunities (APY, TVL, withdrawal) | DeFi Llama Yields API (yields.llama.fi) |
 | **DeFi Llama LP** | LP pool reward APY across chains | DeFi Llama Yields API (yields.llama.fi) |
+| **DeFi Llama TVL** | Protocol TVL changes (1d/7d/30d) | DeFi Llama Protocols API (api.llama.fi) |
 | **Binance** | BTC/USDT price (or any symbol) | Binance public ticker API |
 
 ### Adding a New Source
@@ -60,6 +61,7 @@ type Source interface {
 | **Turtle alerts** | Fires on new Turtle yield opportunities matching user's yield/TVL/type/stablecoin criteria | Permanent per opportunity per user |
 | **DeFi Llama alerts** | Fires on stablecoin yield opportunities matching user's APY/TVL/token/withdrawal criteria | Permanent per opportunity per user (APY bucket dedup) |
 | **DeFi Llama LP alerts** | Fires on LP/DEX pool reward APY opportunities matching user's chain, reward APY, and TVL criteria | Permanent per pool per user (APY bucket dedup) |
+| **DeFi Llama TVL alerts** | Fires when a protocol's TVL drops or increases by X% over a configurable period (1d/7d/30d) | Permanent until condition resets |
 | **Binance price alerts** | Fires when a coin's price crosses a user-defined target (increase/decrease to X) | Permanent until condition resets |
 | **Daily reports** | Scheduled summary sent at configured hour (UTC+8) | Keyed by date (naturally unique) |
 
@@ -84,6 +86,7 @@ All alerts use **fire-once semantics** — no TTL. Dedup keys are stored permane
 | `GET` | `/api/subscriptions` | List user's event subscriptions |
 | `POST` | `/api/subscriptions` | Subscribe to an event |
 | `DELETE` | `/api/subscriptions/{id}` | Unsubscribe (also clears dedup keys) |
+| `GET` | `/api/defillama/protocols/search` | Search DeFi Llama protocols by name (`?q=aave`) |
 
 ## Monitoring & Observability
 
@@ -207,6 +210,7 @@ internal/
       turtle.go             # Turtle yield opportunities (api.turtle.xyz)
       defillama.go          # DeFi Llama stablecoin yields (yields.llama.fi)
       defillama_lp.go       # DeFi Llama LP/DEX reward yields (yields.llama.fi)
+      defillama_tvl.go      # DeFi Llama protocol TVL change alerts (api.llama.fi)
       binance.go            # Binance price alerts (public ticker API)
   store/                    # PostgreSQL store + migrations
   telegram/                 # Telegram bot (long-polling, OTP linking)

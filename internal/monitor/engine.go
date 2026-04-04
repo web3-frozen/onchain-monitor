@@ -282,6 +282,9 @@ func (e *Engine) pollAll(ctx context.Context) {
 
 	// Check DeFi Llama LP reward alerts
 	e.checkDefiLlamaLPAlerts(ctx)
+
+	// Check DeFi Llama protocol TVL change alerts
+	e.checkDefiLlamaTVLAlerts(ctx)
 }
 
 // checkMaxpainAlerts checks if current prices have crossed liquidation max pain levels.
@@ -1265,5 +1268,144 @@ func (e *Engine) sendDefiLlamaLPGroupedAlert(chatID int64, pools []DefiLlamaLPOp
 		}
 		e.logNotification(chatID, "defillama_lp", "general_defillama_lp_alert",
 			fmt.Sprintf("%d new LP pools (%s): %s", len(pools), chainFilter, strings.Join(symbols, ", ")))
+	}
+}
+
+// checkDefiLlamaTVLAlerts checks protocol TVL changes against subscriber thresholds.
+func (e *Engine) checkDefiLlamaTVLAlerts(ctx context.Context) {
+	tvlSrc, ok := e.sources["defillama_tvl"]
+	if !ok {
+		return
+	}
+
+	subscribers, err := e.store.GetSubscribersWithThresholds(ctx, "general_defillama_tvl_alert")
+	if err != nil || len(subscribers) == 0 {
+		return
+	}
+
+	type tvlChangeGetter interface {
+		GetTVLChangePct(slug string, periodMinutes int) (float64, error)
+		GetProtocolBySlug(slug string) *struct {
+			Name string
+			Slug string
+			TVL  float64
+		}
+	}
+
+	// Use a more flexible interface check
+	type tvlChecker interface {
+		GetTVLChangePct(slug string, periodMinutes int) (float64, error)
+	}
+	type protocolGetter interface {
+		GetProtocolBySlug(slug string) interface{}
+	}
+
+	checker, ok := tvlSrc.(tvlChecker)
+	if !ok {
+		return
+	}
+
+	// Cache TVL changes per (slug, period) to avoid duplicate API calls
+	type cacheKey struct {
+		slug   string
+		period int
+	}
+	changeCache := make(map[cacheKey]float64)
+
+	for _, sub := range subscribers {
+		slug := strings.ToLower(sub.Coin)
+		if slug == "" {
+			continue
+		}
+
+		// Period: window_minutes stores the period (1440=1d, 10080=7d, 43200=30d)
+		period := sub.WindowMinutes
+		if period == 0 {
+			period = 1440 // default to 1d
+		}
+
+		// Threshold percentage
+		threshold := sub.ThresholdPct
+		if threshold <= 0 {
+			threshold = 10 // default 10%
+		}
+
+		direction := strings.ToLower(sub.Direction)
+		if direction != "drop" && direction != "increase" {
+			direction = "drop"
+		}
+
+		key := cacheKey{slug: slug, period: period}
+		changePct, cached := changeCache[key]
+		if !cached {
+			c, err := checker.GetTVLChangePct(slug, period)
+			if err != nil {
+				e.logger.Warn("defillama tvl change fetch failed", "slug", slug, "period", period, "error", err)
+				continue
+			}
+			changePct = c
+			changeCache[key] = changePct
+		}
+
+		// Check if threshold is met
+		var triggered bool
+		switch direction {
+		case "drop":
+			// changePct is negative when TVL drops, so check if drop exceeds threshold
+			triggered = changePct <= -threshold
+		case "increase":
+			triggered = changePct >= threshold
+		}
+
+		periodLabel := "1d"
+		switch period {
+		case 10080:
+			periodLabel = "7d"
+		case 43200:
+			periodLabel = "30d"
+		}
+
+		alertKey := fmt.Sprintf("defillama_tvl:%d:%s:%s:%d:%.1f", sub.ChatID, slug, direction, period, threshold)
+		if triggered {
+			if e.dedup.AlreadySent(ctx, alertKey) {
+				metrics.AlertsDeduplicatedTotal.WithLabelValues("defillama_tvl", "defillama_tvl_alert").Inc()
+				continue
+			}
+			e.sendDefiLlamaTVLAlert(sub.ChatID, tvlSrc, slug, changePct, threshold, direction, periodLabel)
+			e.dedup.Record(ctx, alertKey)
+		} else {
+			e.dedup.Clear(ctx, alertKey)
+		}
+	}
+}
+
+func (e *Engine) sendDefiLlamaTVLAlert(chatID int64, src Source, slug string, changePct, threshold float64, direction, periodLabel string) {
+	dirLabel := "⬇️ DROP"
+	verb := "dropped"
+	if direction == "increase" {
+		dirLabel = "⬆️ INCREASE"
+		verb = "increased"
+	}
+
+	absChange := math.Abs(changePct)
+
+	msg := fmt.Sprintf("🚨 %s TVL %s ALERT (%s)\n\n"+
+		"%s TVL has %s by %.2f%% in the last %s!\n\n"+
+		"TVL Change: %.2f%%\n"+
+		"Threshold:  %.1f%%\n"+
+		"Period:     %s\n\n"+
+		"🔗 https://defillama.com/protocol/%s",
+		strings.ToUpper(slug), dirLabel, periodLabel,
+		slug, verb, absChange, periodLabel,
+		changePct, threshold, periodLabel,
+		slug)
+
+	if err := e.alertFn(chatID, msg); err != nil {
+		metrics.AlertsFailedTotal.WithLabelValues("defillama_tvl", "defillama_tvl_alert").Inc()
+		e.logger.Error("send defillama TVL alert failed", "chat_id", chatID, "error", err)
+	} else {
+		metrics.AlertsSentTotal.WithLabelValues("defillama_tvl", "defillama_tvl_alert").Inc()
+		e.logNotification(chatID, "defillama_tvl", "general_defillama_tvl_alert",
+			fmt.Sprintf("%s TVL %s %.2f%% (%s, threshold: %.1f%%)", slug, verb, absChange, periodLabel, threshold))
 	}
 }
