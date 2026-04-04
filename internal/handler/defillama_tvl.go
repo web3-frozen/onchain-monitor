@@ -27,7 +27,7 @@ func SearchDefiLlamaProtocols(searcher protocolSearcher) http.HandlerFunc {
 		query := r.URL.Query().Get("q")
 		if query == "" {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte("[]"))
+			_, _ = w.Write([]byte("[]"))
 			return
 		}
 
@@ -47,6 +47,6 @@ func SearchDefiLlamaProtocols(searcher protocolSearcher) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(results)
+		_ = json.NewEncoder(w).Encode(results)
 	}
 }

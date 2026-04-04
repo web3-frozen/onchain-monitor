@@ -1283,21 +1283,8 @@ func (e *Engine) checkDefiLlamaTVLAlerts(ctx context.Context) {
 		return
 	}
 
-	type tvlChangeGetter interface {
-		GetTVLChangePct(slug string, periodMinutes int) (float64, error)
-		GetProtocolBySlug(slug string) *struct {
-			Name string
-			Slug string
-			TVL  float64
-		}
-	}
-
-	// Use a more flexible interface check
 	type tvlChecker interface {
 		GetTVLChangePct(slug string, periodMinutes int) (float64, error)
-	}
-	type protocolGetter interface {
-		GetProtocolBySlug(slug string) interface{}
 	}
 
 	checker, ok := tvlSrc.(tvlChecker)
