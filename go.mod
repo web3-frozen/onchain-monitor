@@ -9,7 +9,7 @@ require (
 	github.com/infisical/go-sdk v0.7.1
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/prometheus/client_golang v1.23.2
-	github.com/redis/go-redis/v9 v9.20.0
+	github.com/redis/go-redis/v9 v9.20.1
 	golang.org/x/sync v0.19.0
 	golang.org/x/text v0.34.0
 )
