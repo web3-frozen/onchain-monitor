@@ -1,21 +1,25 @@
 version: "2"
 linters:
+  default: none
   enable:
     - govet
     - staticcheck
     - errcheck
     - ineffassign
     - unused
-
-linters-settings:
-  errcheck:
-    check-blank: false
-
-issues:
-  exclude:
-    - Error return value of .* is not checked
-    - Use fmt.Fprintf
-    - could use tagged switch
-
+  exclusions:
+    rules:
+      - path: (.+)_test\.go
+        linters:
+          - errcheck
+      - text: Error return value of
+        linters:
+          - errcheck
+      - text: Use fmt\.Fprintf
+        linters:
+          - staticcheck
+      - text: could use tagged switch
+        linters:
+          - staticcheck
 run:
   timeout: 5m
