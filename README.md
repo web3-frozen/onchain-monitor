@@ -247,3 +247,5 @@ BASE_URL=https://monitoring.dummysui.monster ./scripts/integration-test.sh
 This project is licensed under the [MIT License](LICENSE).
 
 <!-- ci:fix-gotoolchain -->
+
+<!-- ci:fix-golangci-config -->
