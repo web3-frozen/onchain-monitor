@@ -1,0 +1,23 @@
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - unused
+
+linters-settings:
+  staticcheck:
+    checks:
+      - all
+  errcheck:
+    check-blank: false
+
+issues:
+  exclude:
+    - Error return value of .* is not checked
+    - Use fmt.Fprintf
+    - could use tagged switch
+
+run:
+  timeout: 5m
