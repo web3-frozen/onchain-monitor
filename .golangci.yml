@@ -6,6 +6,12 @@ linters:
     - errcheck
     - ineffassign
     - unused
+  disable:
+    - gci
+
+linters-settings:
+  staticcheck:
+    go: "1.24"
 
 run:
   go: "1.24"
