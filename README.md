@@ -249,3 +249,5 @@ This project is licensed under the [MIT License](LICENSE).
 <!-- ci:fix-gotoolchain -->
 
 <!-- ci:fix-golangci-config -->
+
+<!-- ci:fix-simplify-config -->
