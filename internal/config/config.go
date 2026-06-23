@@ -52,9 +52,10 @@ func loadFromInfisical(cfg *Config, clientID, clientSecret string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	autoRefresh := false
 	client := infisical.NewInfisicalClient(ctx, infisical.Config{
 		SiteUrl:          siteURL,
-		AutoTokenRefresh: false,
+		AutoTokenRefresh: &autoRefresh,
 	})
 
 	_, err := client.Auth().UniversalAuthLogin(clientID, clientSecret)
