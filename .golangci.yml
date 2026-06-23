@@ -1,18 +1,6 @@
-# See https://golangci-lint.run/ for configuration options
 linters:
-  enable:
-    - govet
-    - staticcheck
-    - errcheck
-    - ineffassign
-    - unused
   disable:
     - gci
 
-linters-settings:
-  staticcheck:
-    go: "1.24"
-
 run:
-  go: "1.24"
   timeout: 5m
