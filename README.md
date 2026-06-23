@@ -251,3 +251,5 @@ This project is licensed under the [MIT License](LICENSE).
 <!-- ci:fix-golangci-config -->
 
 <!-- ci:fix-simplify-config -->
+
+<!-- ci:remove-golangci-yml -->
