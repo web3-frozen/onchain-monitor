@@ -1,6 +1,6 @@
 module github.com/web3-frozen/onchain-monitor
 
-go 1.26.10
+go 1.27.3
 
 require (
 	github.com/alicebob/miniredis/v2 v2.40.0
@@ -11,7 +11,7 @@ require (
 	github.com/prometheus/client_golang v1.25.0
 	github.com/redis/go-redis/v9 v9.23.0
 	golang.org/x/sync v0.25.0
-	golang.org/x/text v0.43.0
+	golang.org/x/text v0.44.0
 )
 
 require (
