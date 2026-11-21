@@ -45,7 +45,7 @@ assert_json_gt() {
   TOTAL=$((TOTAL + 1))
   local actual
   actual=$(curl -s "$url" 2>/dev/null | jq -r "$jq_expr" 2>/dev/null || echo "0")
-  if [ "$(echo "$actual > $min" | bc -l 2>/dev/null)" = "1" ]; then
+  if [[ "$actual" =~ ^[0-9]+$ ]] && (( actual > min )); then
     green "  ✓ $desc ($actual > $min)"
     PASS=$((PASS + 1))
   else
