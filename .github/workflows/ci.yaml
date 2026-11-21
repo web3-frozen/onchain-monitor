@@ -5,6 +5,28 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      rebuild_reason:
+        description: "Why this image is being rebuilt"
+        required: false
+        type: string
+      cve_ids:
+        description: "Comma-separated baseline CVE IDs"
+        required: false
+        type: string
+      previous_image:
+        description: "Previously deployed image digest/reference"
+        required: false
+        type: string
+      baseline_run_id:
+        description: "CVE remediation run containing the baseline artifact"
+        required: false
+        type: string
+      application:
+        description: "Argo CD Application to verify after merge"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -21,6 +43,11 @@ jobs:
       image-name: onchain-monitor
       workload-dir: workloads/onchain-monitor
       go-version: "1.27.4"
+      application: onchain-monitor
+      rebuild_reason: ${{ github.event.inputs.rebuild_reason || '' }}
+      cve_ids: ${{ github.event.inputs.cve_ids || '' }}
+      previous_image: ${{ github.event.inputs.previous_image || '' }}
+      baseline_run_id: ${{ github.event.inputs.baseline_run_id || '' }}
     secrets: inherit
 
   # ── Integration Test ─────────────────────────────────────
