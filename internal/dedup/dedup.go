@@ -59,7 +59,9 @@ func (d *Deduplicator) Clear(ctx context.Context, key string) {
 // ClearByPattern removes all dedup keys matching a glob pattern (e.g., "*:12345:*").
 func (d *Deduplicator) ClearByPattern(ctx context.Context, pattern string) {
 	iter := d.rdb.Scan(ctx, 0, pattern, 100).Iterator()
-	for iter.Next(ctx) {
-		d.rdb.Del(ctx, iter.Val()) //nolint:errcheck
+	// go-redis v9.24 deprecated ScanIterator.Next/Val in favour of the native
+	// Go 1.23+ iterator (Vals); see SA1019.
+	for key := range iter.Vals(ctx) {
+		d.rdb.Del(ctx, key) //nolint:errcheck
 	}
 }
